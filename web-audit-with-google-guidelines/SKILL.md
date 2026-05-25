@@ -1,9 +1,9 @@
 ---
-name: audit-website-referencing
-description: Audit a website codebase against Google's Search Quality Rater Guidelines (E-E-A-T, YMYL, page purpose, content structure, attribution, spam patterns, trust signals). Use whenever the user invokes /audit-website-referencing, asks to "review the site for Google quality", "check E-E-A-T", "audit for SEO quality signals", "see how Google would rate this site", or wants to know how their site would score against Google's rater rubric. Writes a findings report to google-guidelines-audit.md at the codebase root, then offers to implement fixes for high-severity issues one at a time with user approval.
+name: web-audit-with-google-guidelines
+description: Audit a website codebase against Google's Search Quality Rater Guidelines (E-E-A-T, YMYL, page purpose, content structure, attribution, spam patterns, trust signals). Use whenever the user invokes /web-audit-with-google-guidelines, asks to "review the site for Google quality", "check E-E-A-T", "audit for SEO quality signals", "see how Google would rate this site", or wants to know how their site would score against Google's rater rubric. Writes a findings report to google-guidelines-audit.md at the codebase root, then offers to implement fixes for high-severity issues one at a time with user approval.
 ---
 
-# /audit-website-referencing
+# /web-audit-with-google-guidelines
 
 You are auditing a website codebase against Google's *Search Quality Rater Guidelines* (SQRG, doc version September 11, 2025).
 
