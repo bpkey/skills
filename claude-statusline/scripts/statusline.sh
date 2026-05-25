@@ -42,12 +42,26 @@ if [ -n "$cwd" ]; then
   branch=$(git -C "$dir" branch --show-current 2>/dev/null)
 fi
 
+# Color the context% to flag when it climbs: 10–14% orange, 15%+ red, under
+# 10% no color. ANSI escapes (orange via 256-color 208, red via 196) with a
+# reset after; Claude Code renders these in the status line.
+pct_segment=""
+if [ -n "$pct" ]; then
+  if [ "$pct" -ge 15 ]; then
+    pct_segment=$'\033[38;5;196m'"$pct%"$'\033[0m'
+  elif [ "$pct" -ge 10 ]; then
+    pct_segment=$'\033[38;5;208m'"$pct%"$'\033[0m'
+  else
+    pct_segment="$pct%"
+  fi
+fi
+
 # Assemble left to right, dropping any segment we couldn't resolve.
 out="$cwd"
-[ -n "$branch" ]   && out="$out [$branch]"
-[ -n "$worktree" ] && out="$out [$worktree]"
-[ -n "$model" ]    && out="$out  $model"
-[ -n "$effort" ]   && out="$out  $effort"
-[ -n "$pct" ]      && out="$out  $pct%"
+[ -n "$branch" ]      && out="$out [$branch]"
+[ -n "$worktree" ]    && out="$out [$worktree]"
+[ -n "$model" ]       && out="$out  $model"
+[ -n "$effort" ]      && out="$out  $effort"
+[ -n "$pct_segment" ] && out="$out  $pct_segment"
 
 printf '%s' "$out"

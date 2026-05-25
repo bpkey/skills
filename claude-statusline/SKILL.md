@@ -28,7 +28,7 @@ This is the same end state the built-in `/statusline` command produces, but pinn
 | `[worktree]` | `.workspace.git_worktree` (falls back to `.worktree.name`) | only shown in a linked git worktree |
 | model | `.model.display_name` | e.g. `Opus 4.7` |
 | effort | `.effort.level` | only shown on models with a reasoning-effort knob |
-| context% | `.context_window.used_percentage` | omitted until the first model response sets it |
+| context% | `.context_window.used_percentage` | omitted until the first model response sets it; **orange at 10–14%, red at 15%+**, plain below 10% |
 
 Any segment whose data isn't available is dropped, so the line stays clean outside a repo, before the first response, or on a model with no effort setting.
 
