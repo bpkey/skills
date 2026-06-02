@@ -58,8 +58,9 @@ Set it up once:
 1. Finds the current session's transcript file via `lsof -p $PPID` (the Bash shell's parent is the running `claude` process).
 2. Falls back to the most recently modified JSONL under `~/.claude/projects/<encoded-cwd>/` if `lsof` returns nothing.
 3. Reads the current session's display name (if any) from `~/.claude/sessions/<pid>.json`, where Claude Code stores per-session metadata keyed by PID with `sessionId` and an optional `name` field set via `/rename`.
-4. Activates Terminal.app and either sends Cmd+T (`tab`) or calls `do script` with no `in` clause (`window`).
-5. `cd`s to the original `cwd` and runs `claude --resume <session-id> --fork-session -n <fork-name>`.
+4. Reads the latest `permissionMode` from the transcript. If the current session is in `bypassPermissions` (launched with `--dangerously-skip-permissions`, or toggled there via shift+tab), the fork inherits it by appending `--dangerously-skip-permissions` to the launch command. If the mode was later toggled back, the fork does *not* inherit bypass.
+5. Activates Terminal.app and either sends Cmd+T (`tab`) or calls `do script` with no `in` clause (`window`).
+6. `cd`s to the original `cwd` and runs `claude --resume <session-id> --fork-session -n <fork-name>` (plus `--dangerously-skip-permissions` when inherited).
 
 If `tab` is requested but no Terminal window is open, the script falls back to `window` automatically.
 

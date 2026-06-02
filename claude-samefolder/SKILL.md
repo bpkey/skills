@@ -9,6 +9,10 @@ Opens a fresh `claude` session in a new Apple Terminal tab (default) or window, 
 
 Cmd+T natively lands in `~`. This skill `cd`s into the original `cwd` first, so the new session boots straight into your current project — no manual navigation needed.
 
+## Permission mode is inherited
+
+If the current session is running in `bypassPermissions` (launched with `--dangerously-skip-permissions`, or toggled there via shift+tab), the new session inherits it — the script reads the latest `permissionMode` from the current transcript and appends `--dangerously-skip-permissions` to the `claude` launch. If the mode was later toggled back to default/acceptEdits/plan, the new session starts without bypass.
+
 ## Modes
 
 - `/claude-samefolder` → same as `/claude-samefolder tab`

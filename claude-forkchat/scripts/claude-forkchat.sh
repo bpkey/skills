@@ -65,9 +65,19 @@ else
     fork_name="fork-${session_id:0:8}"
 fi
 
+# 4. Carry over the current session's permission mode. If the parent session is
+#    running in bypassPermissions (launched with --dangerously-skip-permissions,
+#    or toggled there via shift+tab), the latest permissionMode entry in the
+#    transcript reflects it — so the fork should inherit the same setting.
+dangerous_flag=""
+last_mode="$(grep -o '"permissionMode":"[^"]*"' "$session_path" 2>/dev/null | tail -1 | sed 's/.*:"\([^"]*\)"$/\1/' || true)"
+if [[ "$last_mode" == "bypassPermissions" ]]; then
+    dangerous_flag=" --dangerously-skip-permissions"
+fi
+
 quoted_pwd="$(printf '%q' "$PWD")"
 quoted_name="$(printf '%q' "$fork_name")"
-inner_cmd="cd $quoted_pwd && claude --resume $session_id --fork-session -n $quoted_name"
+inner_cmd="cd $quoted_pwd && claude --resume $session_id --fork-session -n $quoted_name$dangerous_flag"
 
 escape_for_applescript() {
     printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'

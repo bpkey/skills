@@ -15,8 +15,31 @@ case "$mode" in
         ;;
 esac
 
+# Carry over the current session's permission mode. If the parent session is
+# running in bypassPermissions (launched with --dangerously-skip-permissions,
+# or toggled there via shift+tab), the new session should inherit the same
+# setting. The latest permissionMode entry in the current transcript reflects it.
+# Locate the transcript: prefer the session-id env var, fall back to lsof.
+session_path=""
+if [[ -n "${CLAUDE_CODE_SESSION_ID:-}" ]]; then
+    encoded_cwd="$(printf '%s' "$PWD" | sed 's|/|-|g')"
+    cand="$HOME/.claude/projects/$encoded_cwd/$CLAUDE_CODE_SESSION_ID.jsonl"
+    [[ -f "$cand" ]] && session_path="$cand"
+fi
+if [[ -z "$session_path" ]] && command -v lsof >/dev/null 2>&1; then
+    session_path="$(lsof -p "$PPID" 2>/dev/null | awk '/\.jsonl$/ {print $NF}' | head -1 || true)"
+fi
+
+dangerous_flag=""
+if [[ -n "$session_path" && -f "$session_path" ]]; then
+    last_mode="$(grep -o '"permissionMode":"[^"]*"' "$session_path" 2>/dev/null | tail -1 | sed 's/.*:"\([^"]*\)"$/\1/' || true)"
+    if [[ "$last_mode" == "bypassPermissions" ]]; then
+        dangerous_flag=" --dangerously-skip-permissions"
+    fi
+fi
+
 quoted_pwd="$(printf '%q' "$PWD")"
-inner_cmd="cd $quoted_pwd && claude"
+inner_cmd="cd $quoted_pwd && claude$dangerous_flag"
 
 escape_for_applescript() {
     printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
