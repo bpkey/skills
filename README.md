@@ -1,5 +1,6 @@
 # Skills
 
+- **`/architecture`** — designs, reviews, and refactors codebase *structure* (module boundaries, layering, where new code lives, naming) to satisfy senior human reviewers and stay legible to AI agents. Greenfield: test-first by default. Brownfield: conform to the prevailing pattern, split god-files before they grow, and ratchet toward TDD without rewriting everything. Triggers on "design the architecture", "where should this live", "review the structure", "is this the right abstraction", or any change crossing module boundaries — not for single-file edits or styling.
 - **`/claude-samefolder [tab|window]`** — opens a fresh `claude` session in a new Terminal tab (default) or window, `cd`'d into your current project. (Plain Cmd+T lands in `~`.)
 - **`/claude-forkchat [tab|window]`** — forks the *current* conversation alongside this one. Like built-in `/branch`, but keeps both threads alive instead of swapping the current terminal into the fork. Backed by `claude --resume <id> --fork-session`.
 - **`/claude-statusline`** — sets up the Claude Code status line to show `cwd [branch] [worktree]  model  effort  context%` on every turn. Installs a small renderer to `~/.claude/statusline.sh` and merges `.statusLine` into `settings.json` (backed up first) — the same end state `/statusline` produces, but pinned to this exact layout.
