@@ -127,3 +127,7 @@ fire that comes due while the previous run is still going is skipped.
   preflights for it and warns (job still created).
 - The Mac must be awake (or asleep-then-woken) for jobs to run; nothing here
   wakes the machine on a schedule.
+- Each job registers in System Settings → Login Items & Extensions as a
+  background item named `schedule-local.<id>` (a tiny per-job launcher in
+  `~/.local/state/schedule-local/launchers/`), so macOS's "App Background
+  Activity" notification names the job instead of a generic "python3".

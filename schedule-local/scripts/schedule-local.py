@@ -34,6 +34,7 @@ LOGS_DIR = STATE_DIR / "logs"
 REGISTRY = STATE_DIR / "jobs.json"
 LOCK_FILE = STATE_DIR / ".lock"
 STABLE_SCRIPT = STATE_DIR / "schedule-local.py"
+LAUNCHERS_DIR = STATE_DIR / "launchers"
 LAUNCH_AGENTS = Path.home() / "Library" / "LaunchAgents"
 LABEL_PREFIX = "com.schedule-local."
 
@@ -273,6 +274,25 @@ def log_path_for(job_id):
     return LOGS_DIR / (job_id + ".log")
 
 
+def launcher_path_for(job_id):
+    return LAUNCHERS_DIR / ("schedule-local." + job_id)
+
+
+def write_launcher(job_id):
+    """Per-job named launcher: macOS Login Items / the "App Background
+    Activity" notification display the name of ProgramArguments[0], so without
+    this every job would show up as "python3"."""
+    LAUNCHERS_DIR.mkdir(parents=True, exist_ok=True)
+    path = launcher_path_for(job_id)
+    content = "#!/bin/sh\nexec /usr/bin/python3 %s _run %s\n" % (
+        shlex.quote(str(STABLE_SCRIPT)), shlex.quote(job_id))
+    tmp = path.parent / (path.name + ".tmp")
+    tmp.write_text(content)
+    tmp.chmod(0o755)
+    os.replace(tmp, path)
+    return path
+
+
 def launchctl(*args, check=False):
     proc = subprocess.run(["launchctl"] + list(args),
                           capture_output=True, text=True)
@@ -292,8 +312,7 @@ def write_plist(job):
     log = str(log_path_for(job["id"]))
     data = {
         "Label": label_for(job["id"]),
-        "ProgramArguments": ["/usr/bin/python3", str(STABLE_SCRIPT),
-                             "_run", job["id"]],
+        "ProgramArguments": [str(write_launcher(job["id"]))],
         "StartCalendarInterval": cron_to_calendar_intervals(parse_cron(job["cron"])),
         "StandardOutPath": log,
         "StandardErrorPath": log,
@@ -446,7 +465,8 @@ def cmd_remove(args):
         save_registry(reg)
     launchctl("bootout", "%s/%s" % (gui_domain(), label_for(args.id)))
     removed = []
-    for path in (plist_path_for(args.id), log_path_for(args.id)):
+    for path in (plist_path_for(args.id), log_path_for(args.id),
+                 launcher_path_for(args.id)):
         if path.exists():
             path.unlink()
             removed.append(shorten_home(path))
