@@ -64,21 +64,22 @@ tell the user to move the export to `.zshenv` or `.zprofile`.
 ## Command reference
 
 ```bash
-SL="python3 ~/.claude/skills/schedule-local/scripts/schedule-local.py"
+# SL=~/.claude/skills/schedule-local/scripts/schedule-local.py  (shorthand used below;
+# invoke as `python3 "$SL" ...` — quoted, so it works in zsh and bash alike)
 
-$SL add --id <slug> --cron "<expr>" --command "<sh>"   [--workdir <dir>] [--description "<text>"]
-$SL add --id <slug> --cron "<expr>" --prompt "<text>"  [--workdir <dir>] [--description "<text>"]
-$SL list                  # numbered markdown dashboard (also the no-args default)
-$SL run-now <id>          # trigger immediately (launchctl kickstart)
-$SL remove <id>           # unload agent, delete plist + registry entry + log
-$SL update <id> [--cron ...] [--command ...|--prompt ...] [--workdir ...] [--description ...]
-$SL logs <id> [--lines N] # tail of the per-job log (default 40 lines)
+python3 "$SL" add --id <slug> --cron "<expr>" --command "<sh>"   [--workdir <dir>] [--description "<text>"]
+python3 "$SL" add --id <slug> --cron "<expr>" --prompt "<text>"  [--workdir <dir>] [--description "<text>"]
+python3 "$SL" list                  # numbered markdown dashboard (also the no-args default)
+python3 "$SL" run-now <id>          # trigger immediately (launchctl kickstart)
+python3 "$SL" remove <id>           # unload agent, delete plist + registry entry + log
+python3 "$SL" update <id> [--cron ...] [--command ...|--prompt ...] [--workdir ...] [--description ...]
+python3 "$SL" logs <id> [--lines N] # tail of the per-job log (default 40 lines)
 ```
 
 **Example — shell job** ("back up my notes every night at 2am"):
 
 ```bash
-$SL add --id notes-backup --cron "0 2 * * *" \
+python3 "$SL" add --id notes-backup --cron "0 2 * * *" \
   --command "rsync -a ~/notes/ ~/Backups/notes/" \
   --description "Nightly rsync of ~/notes to ~/Backups"
 ```
@@ -86,7 +87,7 @@ $SL add --id notes-backup --cron "0 2 * * *" \
 **Example — agent job** ("every weekday at 7:30 have Claude summarize overnight CI failures in my api repo"):
 
 ```bash
-$SL add --id ci-morning-report --cron "30 7 * * 1-5" \
+python3 "$SL" add --id ci-morning-report --cron "30 7 * * 1-5" \
   --prompt "Check the CI status of this repo and write a short summary of overnight failures to ci-report.md" \
   --workdir ~/repo/api \
   --description "Weekday 07:30 CI failure summary"
