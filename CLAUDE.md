@@ -47,8 +47,9 @@ Every skill in this repo is **public** and gets installed by anyone via `npx ski
 - **Never assume other private skills or tools are present** (e.g. `/ide`, `tools-config/bin` scripts, the author's personal config). If a skill needs something, it must detect or create it itself, or degrade gracefully.
 - **Persist state in standard, per-user locations**, not author-specific ones — e.g. `${XDG_CONFIG_HOME:-$HOME/.config}/<skill>/…` or `~/.claude/…`, keyed by the *current* user/repo/cwd, never a baked-in path.
 - You **may** inspect the author's own setup for background understanding while building, but **never bake those specifics into the shipped skill** — only the generic, runtime-derived form belongs in the committed code.
+- **A fresh machine starts with permissions DENIED and nothing set up.** "Works on a fresh machine" is about first-run *state*, not just paths: macOS TCC permissions (Automation/Apple Events, Accessibility) are denied until granted, directories don't exist yet, caches aren't built, optional tools may be absent. Pre-flight any OS permission **in the foreground before any destructive or irreversible step**, and on denial print copy-able grant instructions and exit without doing damage — never leave a permission-needing call in an output-swallowed or detached context with no fallback.
 
-When in doubt, ask: "if a stranger installed only this one skill on a fresh machine, would it still work?" If not, it's not generic enough.
+When in doubt, ask: "if a stranger installed only this one skill on a fresh machine, would it still work?" If not, it's not generic enough. And actually exercise the denied/ungranted/missing path, not just the happy path on an already-configured machine — the happy path is the one state that can't reveal a first-run failure.
 
 ## Shared persisted state — `~/.blueprintkey/`
 
