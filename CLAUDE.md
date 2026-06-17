@@ -50,6 +50,28 @@ Every skill in this repo is **public** and gets installed by anyone via `npx ski
 
 When in doubt, ask: "if a stranger installed only this one skill on a fresh machine, would it still work?" If not, it's not generic enough.
 
+## Shared persisted state — `~/.blueprintkey/`
+
+Any skill in this repo that persists data across runs (preferences, caches, learned state) writes under one shared per-user root: **`~/.blueprintkey/`**. Resolve it at runtime (`$HOME/.blueprintkey`, `os.path.expanduser("~/.blueprintkey")`, `${HOME}/.blueprintkey`) — never a hardcoded absolute path, and never elsewhere (`~/.config`, the skill's own install dir, `/tmp` for anything that must survive).
+
+To prevent collisions, the root is partitioned by **concern**, one subdirectory each:
+
+```
+~/.blueprintkey/<concern>/…
+```
+
+- `<concern>` is a stable kebab-case name.
+- Use the **skill's own name** when the data belongs to a single skill (e.g. `~/.blueprintkey/claude-statusline/`).
+- Use a **shared feature name** when several skills read/write the *same* data (e.g. `parallel-sessions/`, shared by `claude-samefolder` + `claude-forkchat`).
+- **Before claiming a new `<concern>`, add a row to the registry below** so no other skill reuses the name.
+- Create it lazily (`mkdir -p`) on first write; never assume it exists. Never drop loose files at the root of `~/.blueprintkey/` — always inside a concern subdir.
+
+**Namespace registry (claimed concerns):**
+
+| `~/.blueprintkey/<concern>/` | Owner skill(s) | What it stores |
+|---|---|---|
+| `parallel-sessions/` | `claude-samefolder`, `claude-forkchat` | git-worktree preference for opening parallel Claude sessions (per-repo `always`/`never`) |
+
 ## Install path
 
 Users install via [`npx skills`](https://github.com/vercel-labs/skills) (the Vercel Labs CLI), not a custom installer. The repo's job is only to host compliant skill folders — frontmatter with `name` + `description`, optional `scripts/`. No bespoke install machinery to maintain.
