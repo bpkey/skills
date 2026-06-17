@@ -39,6 +39,17 @@ Each skill is a top-level folder containing:
 
 Run `/skill-creator` inside Claude Code for the canonical SKILL.md anatomy — don't reproduce the frontmatter schema from memory.
 
+## Skills must be generic — they ship to other people
+
+Every skill in this repo is **public** and gets installed by anyone via `npx skills add bpkey/skills`. The person running a skill is almost never this repo's author and almost never on this machine. So a skill must work for **any user on any machine**, deriving everything it needs at runtime:
+
+- **Never hardcode this author's paths** (`~/repo/...`, `/Users/olivier/...`), usernames, repo names, or machine-specific layout. Compute paths at runtime (`git rev-parse --show-toplevel`, `$HOME`, `${XDG_CONFIG_HOME:-$HOME/.config}`, `basename`, etc.).
+- **Never assume other private skills or tools are present** (e.g. `/ide`, `tools-config/bin` scripts, the author's personal config). If a skill needs something, it must detect or create it itself, or degrade gracefully.
+- **Persist state in standard, per-user locations**, not author-specific ones — e.g. `${XDG_CONFIG_HOME:-$HOME/.config}/<skill>/…` or `~/.claude/…`, keyed by the *current* user/repo/cwd, never a baked-in path.
+- You **may** inspect the author's own setup for background understanding while building, but **never bake those specifics into the shipped skill** — only the generic, runtime-derived form belongs in the committed code.
+
+When in doubt, ask: "if a stranger installed only this one skill on a fresh machine, would it still work?" If not, it's not generic enough.
+
 ## Install path
 
 Users install via [`npx skills`](https://github.com/vercel-labs/skills) (the Vercel Labs CLI), not a custom installer. The repo's job is only to host compliant skill folders — frontmatter with `name` + `description`, optional `scripts/`. No bespoke install machinery to maintain.
