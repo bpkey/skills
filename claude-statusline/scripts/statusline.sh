@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code status line renderer.
 #
-# Layout:  <cwd> [<branch>] [<worktree>]  <model>  <effort>  <context%>
+# Layout:  <context%>  <cwd> [<branch>] [<worktree>]  <model>  <effort>
 #
 # Claude Code pipes the status-line JSON to this script on stdin on every
 # turn; see https://docs.claude.com/en/docs/claude-code/statusline for the
@@ -56,12 +56,21 @@ if [ -n "$pct" ]; then
   fi
 fi
 
-# Assemble left to right, dropping any segment we couldn't resolve.
-out="$cwd"
-[ -n "$branch" ]      && out="$out [$branch]"
-[ -n "$worktree" ]    && out="$out [$worktree]"
-[ -n "$model" ]       && out="$out  $model"
-[ -n "$effort" ]      && out="$out  $effort"
-[ -n "$pct_segment" ] && out="$out  $pct_segment"
+# Assemble left to right with context% first, dropping any segment we couldn't
+# resolve. `append` adds its separator only once the line is non-empty, so the
+# line never starts or ends with stray spaces no matter which segments are
+# present (e.g. before the first response sets context%, cwd leads instead).
+out=""
+append() { # $1 = text, $2 = separator to use when the line already has content
+  [ -z "$1" ] && return
+  if [ -z "$out" ]; then out="$1"; else out="$out$2$1"; fi
+}
+
+append "$pct_segment" "  "
+append "$cwd" "  "
+[ -n "$branch" ]   && append "[$branch]" " "
+[ -n "$worktree" ] && append "[$worktree]" " "
+append "$model" "  "
+append "$effort" "  "
 
 printf '%s' "$out"

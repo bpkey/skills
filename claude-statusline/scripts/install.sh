@@ -70,4 +70,4 @@ printf '%s' "$existing" \
 printf 'Updated settings    → %s (.statusLine)\n' "$SETTINGS"
 
 printf '\nDone. The status line appears on your next message:\n'
-printf '  <cwd> [branch] [worktree]  <model>  <effort>  <context%%>\n'
+printf '  <context%%>  <cwd> [branch] [worktree]  <model>  <effort>\n'
