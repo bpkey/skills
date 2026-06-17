@@ -19,6 +19,12 @@ esac
 # from the conversation. Used only when the current session has no name set.
 fallback_base="${2:-}"
 
+# Where the fork boots. Defaults to the current dir; the worktree pre-step
+# (see SKILL.md / worktree-prep.sh) may point it at a freshly created git
+# worktree via PARALLEL_LAUNCH_DIR. Session/transcript detection below stays
+# anchored to $PWD — that's where the *current* session's state lives.
+launch_dir="${PARALLEL_LAUNCH_DIR:-$PWD}"
+
 # 1. Resolve the current session ID.
 #    The Bash tool spawns shells whose $PPID is the host `claude` process,
 #    which holds the live transcript JSONL open for writing. lsof tells us which.
@@ -75,7 +81,7 @@ if [[ "$last_mode" == "bypassPermissions" ]]; then
     dangerous_flag=" --dangerously-skip-permissions"
 fi
 
-quoted_pwd="$(printf '%q' "$PWD")"
+quoted_pwd="$(printf '%q' "$launch_dir")"
 quoted_name="$(printf '%q' "$fork_name")"
 inner_cmd="cd $quoted_pwd && claude --resume $session_id --fork-session -n $quoted_name$dangerous_flag"
 
@@ -125,17 +131,17 @@ fi
 case "$mode" in
     window)
         open_in_new_window "$inner_cmd"
-        printf "forked from %s into new window as '%s'\n" "$session_id" "$fork_name"
+        printf "forked from %s into new window as '%s' in %s\n" "$session_id" "$fork_name" "$launch_dir"
         ;;
     tab)
         front_count="$(osascript -e 'tell application "Terminal" to count windows' 2>/dev/null || echo 0)"
         if [[ "${front_count:-0}" -eq 0 ]]; then
             err "claude-forkchat: no front Terminal window — opening a new window instead"
             open_in_new_window "$inner_cmd"
-            printf "forked from %s into new window (no front window for tab) as '%s'\n" "$session_id" "$fork_name"
+            printf "forked from %s into new window (no front window for tab) as '%s' in %s\n" "$session_id" "$fork_name" "$launch_dir"
         else
             open_in_new_tab "$inner_cmd"
-            printf "forked from %s into new tab as '%s'\n" "$session_id" "$fork_name"
+            printf "forked from %s into new tab as '%s' in %s\n" "$session_id" "$fork_name" "$launch_dir"
         fi
         ;;
 esac

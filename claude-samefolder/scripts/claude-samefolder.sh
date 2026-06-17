@@ -15,6 +15,12 @@ case "$mode" in
         ;;
 esac
 
+# Where the new session boots. Defaults to the current dir, but the worktree
+# pre-step (see SKILL.md / worktree-prep.sh) may point it at a freshly created
+# git worktree via PARALLEL_LAUNCH_DIR. Transcript/permission detection below
+# stays anchored to $PWD — that's where the *current* session's state lives.
+launch_dir="${PARALLEL_LAUNCH_DIR:-$PWD}"
+
 # Carry over the current session's permission mode. If the parent session is
 # running in bypassPermissions (launched with --dangerously-skip-permissions,
 # or toggled there via shift+tab), the new session should inherit the same
@@ -38,7 +44,7 @@ if [[ -n "$session_path" && -f "$session_path" ]]; then
     fi
 fi
 
-quoted_pwd="$(printf '%q' "$PWD")"
+quoted_pwd="$(printf '%q' "$launch_dir")"
 inner_cmd="cd $quoted_pwd && claude$dangerous_flag"
 
 escape_for_applescript() {
@@ -87,17 +93,17 @@ fi
 case "$mode" in
     window)
         open_in_new_window "$inner_cmd"
-        printf 'opened new window with fresh claude in %s\n' "$PWD"
+        printf 'opened new window with fresh claude in %s\n' "$launch_dir"
         ;;
     tab)
         front_count="$(osascript -e 'tell application "Terminal" to count windows' 2>/dev/null || echo 0)"
         if [[ "${front_count:-0}" -eq 0 ]]; then
             err "claude-samefolder: no front Terminal window — opening a new window instead"
             open_in_new_window "$inner_cmd"
-            printf 'opened new window with fresh claude in %s\n' "$PWD"
+            printf 'opened new window with fresh claude in %s\n' "$launch_dir"
         else
             open_in_new_tab "$inner_cmd"
-            printf 'opened new tab with fresh claude in %s\n' "$PWD"
+            printf 'opened new tab with fresh claude in %s\n' "$launch_dir"
         fi
         ;;
 esac
