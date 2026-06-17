@@ -30,15 +30,50 @@ stable copy, **jobs keep running even if this skill is updated or uninstalled**
   invocation. Pick this when the user gives you something directly runnable.
 - **agent** (`--prompt`) — a task needing reading, judgment, or multi-step work
   ("check my PRs and summarize what needs attention"). Runs
-  `claude -p "<prompt>" --dangerously-skip-permissions` headless. Always tell
-  the user explicitly that agentic jobs run **fully unattended with permission
-  checks disabled** when you create one — they are trusting the prompt with the
-  same access an unattended `claude --dangerously-skip-permissions` session has.
+  `claude -p "<prompt>" --dangerously-skip-permissions` headless. Because that
+  runs fully unattended with permission checks off, walk through the safety gate
+  in **Agent jobs run unattended — confirm, and prefer a container** below
+  before you create one.
 
 Both run via `/bin/zsh -lc` in the job's workdir, so the user's `~/.zshenv` /
 `~/.zprofile` (PATH, exported keys) are loaded — but `~/.zshrc` is NOT (login
 non-interactive shell). If a job needs an env var that only lives in `.zshrc`,
 tell the user to move the export to `.zshenv` or `.zprofile`.
+
+## Agent jobs run unattended — confirm, and prefer a container
+
+An agent job fires `claude -p "<prompt>" --dangerously-skip-permissions` on a
+schedule with nobody watching. Permission prompts are off, so the run carries
+out whatever the prompt leads to — including wherever a poisoned input it reads
+(an issue, a web page, a file) manages to steer it: deleting files, pushing
+commits, spending money, leaking secrets. The blast radius is the whole machine
+and every credential reachable from it. Say this plainly, in your own words,
+whenever you propose an agent job — the user should decide with eyes open.
+
+The real mitigation is to **bound the blast radius with a container**. If the
+work runs inside a container (Docker or similar), a runaway or hijacked run can
+only damage the container, not the host. So steer every agent job toward a
+containerized prompt: the prompt should do its work inside a container, mounting
+only the paths the task genuinely needs. (The strongest form runs claude itself
+in the container — e.g. a *shell* job whose command is `docker run --rm -v
+<only-what-is-needed> <image> claude -p "<prompt>" --dangerously-skip-permissions`
+— but any prompt that confines the actual work to a container counts.)
+
+That leaves two paths at creation time:
+
+- **The prompt already runs the work in a container** — the safety measure is in
+  place. Create the job directly; no separate approval needed. Still note, in one
+  line, that it runs unattended with permission checks disabled.
+- **The prompt does not involve a container** — do not create the job yet. Warn
+  that it will run unattended with `--dangerously-skip-permissions` (full host
+  access, no human in the loop), recommend moving the work into a container and
+  offer to rewrite the prompt that way, then ask the user to explicitly confirm
+  they accept scheduling it uncontained. Run `add --prompt` only after a clear
+  yes — treat a non-answer, a redirect, or silence as "not yet" and re-ask.
+
+This confirmation is a safety gate, separate from the at-most-one clarifying
+question in *Interpreting a scheduling request* below: it does not count against
+that limit, and that limit never suppresses it.
 
 ## Interpreting a scheduling request
 
