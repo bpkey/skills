@@ -1,6 +1,6 @@
 ---
 name: claude-forkchat
-description: Fork the current Claude Code conversation into a sibling Apple Terminal tab (default) or window. Use when the user invokes /claude-forkchat, /claude-forkchat tab, /claude-forkchat window, or asks to "fork this chat", "branch this conversation into another tab/window", "open a fork alongside", "clone this session", "duplicate this session". Original session keeps running unchanged; the fork starts fresh with its own new session ID, seeded from the current transcript via `claude --resume <id> --fork-session`. When run in the main checkout of a git repo, first offers to fork into its own git worktree (isolated checkout) for collision-free parallel work, remembering the choice per repo. Differs from the built-in `/branch` command, which switches the *current* terminal into the fork — /claude-forkchat keeps both alive side-by-side.
+description: Fork the current Claude Code conversation into a sibling Apple Terminal tab (default) or window. Use when the user invokes /claude-forkchat, /claude-forkchat tab, /claude-forkchat window, or asks to "fork this chat", "branch this conversation into another tab/window", "open a fork alongside", "clone this session", "duplicate this session". Original session keeps running unchanged; the fork starts fresh with its own new session ID, seeded from the current transcript via `claude --resume <id> --fork-session`. When run in the main checkout of a git repo, first offers to fork into its own git worktree (isolated checkout) for collision-free parallel work, remembering the choice globally if asked. Differs from the built-in `/branch` command, which switches the *current* terminal into the fork — /claude-forkchat keeps both alive side-by-side.
 ---
 
 # /claude-forkchat
@@ -34,16 +34,16 @@ Run the resolver from the user's current directory, passing the slug so a worktr
 Parse its `KEY=VALUE` output:
 
 - **`NEED_ASK=0`** → directory decided. Read `LAUNCH_DIR=<dir>` and go to Step 2. (`REASON`: `not-a-git-repo`, `already-in-worktree`, `pref-never`, or `pref-always` where the worktree was just created.)
-- **`NEED_ASK=1`** → you're in the **main checkout of a git repo** with no saved preference for it. Output also gives `TOPLEVEL`, `SUGGESTED_SLUG`, `SUGGESTED_DIR`. Ask the user.
+- **`NEED_ASK=1`** → you're in the **main checkout of a git repo** with no saved global preference yet. Output also gives `TOPLEVEL`, `SUGGESTED_SLUG`, `SUGGESTED_DIR`. Ask the user.
 
 **Asking (only when `NEED_ASK=1`).** Use the **AskUserQuestion** tool with two questions in one call:
 
 1. *Worktree or same folder?* — "You're in the main checkout of `<TOPLEVEL>`. Fork into its own git worktree (isolated checkout at `<SUGGESTED_DIR>`, new branch `<SUGGESTED_SLUG>`) so the forked session can work in parallel without touching this one's files?" Options: **Use a worktree** / **Same folder**.
-2. *Remember for this repo?* — "Remember this for `<TOPLEVEL>` so I don't ask again here?" Options: **Remember** / **Ask each time**.
+2. *Remember from now on?* — "Remember this choice for **every** git repo from now on, so I stop asking? (one global default)" Options: **Remember** / **Ask each time**.
 
 Then:
 
-- If **Remember**: run `worktree-prep.sh remember always` (worktree) or `worktree-prep.sh remember never` (same folder). It prints `SAVED=<file>` — tell the user it's saved there (under `~/.blueprintkey/parallel-sessions/`).
+- If **Remember**: run `worktree-prep.sh remember always` (worktree) or `worktree-prep.sh remember never` (same folder). This saves a single **global default** for every repo. It prints `SAVED=<file>` — tell the user it's saved there (under `~/.blueprintkey/parallel-sessions/`).
 - If **Use a worktree**: run `worktree-prep.sh create dns-cleanup` and read `LAUNCH_DIR=<dir>`. If `create` exits non-zero, tell the user and fall back to the current directory.
 - If **Same folder**: `LAUNCH_DIR` is the current directory.
 
@@ -100,13 +100,13 @@ When you fork into the *same* folder of a git repo, both sessions share one work
 
 - **Where it's created.** `git worktree add <parent>/<repo>-<slug> -b <slug>` — a sibling directory on a new branch named after the conversation slug (`dns-cleanup`, …), or `parallel-N` when there's no slug. Uniquified if the name is taken. No extra prompt.
 - **Fresh checkout at HEAD.** The worktree holds your committed `HEAD`, not the current folder's uncommitted changes. Since the fork resumes the *conversation* (which may reference in-progress edits that live only in the main checkout), commit or stash first if the fork needs them.
-- **Remembering the choice.** "Remember" saves an `always` / `never` decision **per repository** so you're not asked again in that repo, in:
+- **Remembering the choice.** "Remember" saves a single **global default** (`default = always` or `default = never`) that applies to **every** git repo, so you're not asked again anywhere, in:
 
   ```
   ~/.blueprintkey/parallel-sessions/prefs.conf
   ```
 
-  Delete that file (or a repo's line) to be asked again. The preference is shared with `/claude-samefolder`.
+  Delete that file (or change the `default` line) to be asked again. The same global preference is shared with `/claude-samefolder`.
 
 ## Caveats
 

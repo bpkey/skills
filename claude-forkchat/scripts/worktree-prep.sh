@@ -6,8 +6,9 @@
 # choice per-repository, and creates the worktree on request.
 #
 # Fully generic — no hardcoded paths or usernames. The git situation is derived
-# at runtime; the per-repo preference is persisted under the shared BlueprintKey
-# state root:  ~/.blueprintkey/parallel-sessions/prefs.conf
+# at runtime; the preference is a single GLOBAL default (applies to every repo)
+# persisted under the shared BlueprintKey state root:
+#   ~/.blueprintkey/parallel-sessions/prefs.conf   ->   default = always|never
 #
 # Subcommands (all read the CURRENT working directory):
 #   resolve [slug]   Decide what to do. Prints KEY=VALUE lines:
@@ -17,13 +18,13 @@
 #                      TOPLEVEL=<repo root>  (when NEED_ASK=1)
 #                      SUGGESTED_SLUG=<slug> (when NEED_ASK=1)
 #                      SUGGESTED_DIR=<path>  (when NEED_ASK=1)
-#                    With a remembered "always" pref it creates the worktree
+#                    With a remembered "always" default it creates the worktree
 #                    itself and returns its LAUNCH_DIR.
 #   create [slug]    Create `git worktree add <parent>/<repo>-<slug> -b <slug>`
 #                    off the current HEAD (uniquifies a taken slug). Prints
 #                    LAUNCH_DIR=<abs path>. A status note goes to stderr.
 #   remember <always|never>
-#                    Persist the choice for the current repo. Prints SAVED=<file>.
+#                    Persist the GLOBAL default for all repos. Prints SAVED=<file>.
 
 set -euo pipefail
 
@@ -52,12 +53,12 @@ is_linked_worktree() {
 }
 
 # --- preference store ------------------------------------------------------
-# File format, one repo per line:  <always|never><TAB><git-toplevel-path>
+# A single GLOBAL default for every repo. File holds one line:  default = always|never
 
-saved_pref() {  # $1 = git toplevel -> echoes always|never|ask
-    local top="$1" val
+saved_pref() {  # echoes always|never|ask  (global default, repo-independent)
+    local val
     [[ -f "$PREF_FILE" ]] || { echo ask; return; }
-    val="$(awk -F'\t' -v p="$top" '$2==p {v=$1} END{if(v)print v}' "$PREF_FILE")"
+    val="$(sed -n 's/^[[:space:]]*default[[:space:]]*=[[:space:]]*\([a-z]*\).*/\1/p' "$PREF_FILE" | tail -1)"
     case "$val" in always|never) echo "$val" ;; *) echo ask ;; esac
 }
 
@@ -108,15 +109,11 @@ cmd_create() {
 }
 
 cmd_remember() {
-    local val="${1:-}" top
+    local val="${1:-}"
     case "$val" in always|never) ;; *) err "worktree-prep: remember needs 'always' or 'never'"; exit 2 ;; esac
-    in_work_tree || { err "worktree-prep: not inside a git work tree"; exit 1; }
-    top="$(git rev-parse --show-toplevel)"
     mkdir -p "$PREF_DIR"
-    if [[ -f "$PREF_FILE" ]]; then
-        awk -F'\t' -v p="$top" '$2!=p' "$PREF_FILE" > "$PREF_FILE.tmp" && mv "$PREF_FILE.tmp" "$PREF_FILE"
-    fi
-    printf '%s\t%s\n' "$val" "$top" >> "$PREF_FILE"
+    # Single global default — overwrite any prior value.
+    printf '# claude-samefolder / claude-forkchat — open new parallel sessions in a git worktree?\ndefault = %s\n' "$val" > "$PREF_FILE"
     printf 'SAVED=%s\n' "$PREF_FILE"
 }
 
@@ -130,7 +127,7 @@ cmd_resolve() {
     fi
     local top pref parent primbase slug
     top="$(git rev-parse --show-toplevel)"
-    pref="$(saved_pref "$top")"
+    pref="$(saved_pref)"
     case "$pref" in
         never)
             printf 'NEED_ASK=0\nLAUNCH_DIR=%s\nREASON=pref-never\n' "$PWD" ;;

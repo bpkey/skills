@@ -1,6 +1,6 @@
 ---
 name: claude-samefolder
-description: Open a fresh (non-resumed) `claude` session in a new Apple Terminal tab or window, in the same working directory as the current session. Use whenever the user invokes /claude-samefolder, /claude-samefolder tab, /claude-samefolder window, or asks to "open another claude in this folder", "start a fresh claude alongside this one", "spawn a new claude in the same project", "open a parallel claude session". Defaults to a new tab; pass `window` for a new window. When run in the main checkout of a git repo, first offers to open the new session in its own git worktree (isolated checkout) for collision-free parallel work, remembering the choice per repo. Differs from /claude-forkchat — /claude-forkchat carries the *current* conversation forward, whereas /claude-samefolder starts with no prior context. The current session keeps running unchanged.
+description: Open a fresh (non-resumed) `claude` session in a new Apple Terminal tab or window, in the same working directory as the current session. Use whenever the user invokes /claude-samefolder, /claude-samefolder tab, /claude-samefolder window, or asks to "open another claude in this folder", "start a fresh claude alongside this one", "spawn a new claude in the same project", "open a parallel claude session". Defaults to a new tab; pass `window` for a new window. When run in the main checkout of a git repo, first offers to open the new session in its own git worktree (isolated checkout) for collision-free parallel work, remembering the choice globally if asked. Differs from /claude-forkchat — /claude-forkchat carries the *current* conversation forward, whereas /claude-samefolder starts with no prior context. The current session keeps running unchanged.
 ---
 
 # /claude-samefolder
@@ -36,16 +36,16 @@ Run the resolver from the user's current directory:
 Parse its `KEY=VALUE` output:
 
 - **`NEED_ASK=0`** → the directory is already decided. Read `LAUNCH_DIR=<dir>` and go straight to Step 2 with it. (`REASON` tells you why — `not-a-git-repo`, `already-in-worktree`, `pref-never`, or `pref-always` where a worktree was just created for you.)
-- **`NEED_ASK=1`** → you're in the **main checkout of a git repo** and the user has no saved preference for this repo. The output also gives `TOPLEVEL`, `SUGGESTED_SLUG`, and `SUGGESTED_DIR`. Ask the user (next paragraph).
+- **`NEED_ASK=1`** → you're in the **main checkout of a git repo** and the user has no saved global preference yet. The output also gives `TOPLEVEL`, `SUGGESTED_SLUG`, and `SUGGESTED_DIR`. Ask the user (next paragraph).
 
 **Asking (only when `NEED_ASK=1`).** Use the **AskUserQuestion** tool with two questions in one call:
 
 1. *Worktree or same folder?* — e.g. "You're in the main checkout of `<TOPLEVEL>`. Open the new parallel Claude session in its own git worktree (an isolated checkout at `<SUGGESTED_DIR>`, new branch `<SUGGESTED_SLUG>`) so the two sessions don't step on each other's files?" Options: **Use a worktree** / **Same folder**.
-2. *Remember for this repo?* — "Remember this choice for `<TOPLEVEL>` so I don't ask again here?" Options: **Remember** / **Ask each time**.
+2. *Remember from now on?* — "Remember this choice for **every** git repo from now on, so I stop asking? (one global default)" Options: **Remember** / **Ask each time**.
 
 Then act on the answers:
 
-- If **Remember**: run `worktree-prep.sh remember always` (worktree chosen) or `worktree-prep.sh remember never` (same folder). It prints `SAVED=<file>` — tell the user the choice was saved there (it lives under `~/.blueprintkey/parallel-sessions/`).
+- If **Remember**: run `worktree-prep.sh remember always` (worktree chosen) or `worktree-prep.sh remember never` (same folder). This saves a single **global default** that applies to every repo. It prints `SAVED=<file>` — tell the user the choice was saved there (it lives under `~/.blueprintkey/parallel-sessions/`).
 - If **Use a worktree**: run `worktree-prep.sh create` and read `LAUNCH_DIR=<dir>` from its output. If `create` exits non-zero (e.g. parent dir not writable), tell the user and fall back to the current directory.
 - If **Same folder**: `LAUNCH_DIR` is just the current directory.
 
@@ -82,13 +82,13 @@ This is why Step 1 offers a worktree, but only when it actually helps: you're **
 
 - **Where it's created.** `git worktree add <parent>/<repo>-<slug> -b <slug>` — a sibling directory next to the repo, on a new branch named `<slug>` (auto-named `parallel-1`, `parallel-2`, … and uniquified if taken). No extra prompt.
 - **Fresh checkout at HEAD.** The new worktree contains your committed `HEAD`, *not* the current folder's uncommitted changes — that isolation is the point. Commit or stash first if you want in-progress work carried over.
-- **Remembering the choice.** "Remember" saves an `always` / `never` decision **per repository** (keyed by the repo's top-level path) so you're not asked again in that repo. It's stored in:
+- **Remembering the choice.** "Remember" saves a single **global default** (`default = always` or `default = never`) that applies to **every** git repo, so you're not asked again anywhere. It's stored in:
 
   ```
   ~/.blueprintkey/parallel-sessions/prefs.conf
   ```
 
-  Delete that file (or the line for a repo) to be asked again. The same preference is shared with `/claude-forkchat`.
+  Delete that file (or change the `default` line) to be asked again. The same global preference is shared with `/claude-forkchat`.
 
 ## Caveats
 

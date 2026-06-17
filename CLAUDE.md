@@ -70,7 +70,7 @@ To prevent collisions, the root is partitioned by **concern**, one subdirectory 
 
 | `~/.blueprintkey/<concern>/` | Owner skill(s) | What it stores |
 |---|---|---|
-| `parallel-sessions/` | `claude-samefolder`, `claude-forkchat` | git-worktree preference for opening parallel Claude sessions (per-repo `always`/`never`) |
+| `parallel-sessions/` | `claude-samefolder`, `claude-forkchat` | git-worktree preference for opening parallel Claude sessions (single global `default = always`/`never` in `prefs.conf`) |
 
 ## Install path
 
