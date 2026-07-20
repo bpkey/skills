@@ -4,12 +4,24 @@
 import curses, random, time, os, sys, subprocess
 
 GLYPHS = "ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇ0123456789Z:・.\"=*+-<>¦｜"
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
 
-def knock(n=2):
-    for _ in range(n):
-        subprocess.Popen(["afplay", "/System/Library/Sounds/Bottle.aiff"],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(0.45)
+def play(name, blocking=False):
+    """Play a bundled wav asset via afplay; silently no-op if unavailable."""
+    path = os.path.join(ASSETS, name)
+    if not os.path.exists(path):
+        return None
+    try:
+        p = subprocess.Popen(["afplay", path],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if blocking:
+            p.wait()
+        return p
+    except Exception:
+        return None
+
+def knock():
+    play("knock.wav")
 
 def rain(stdscr, seconds, fade_in=False):
     h, w = stdscr.getmaxyx()
@@ -46,6 +58,8 @@ def ghost_type(stdscr, text, y=2, x=2, cps=(0.09, 0.22)):
     stdscr.erase(); stdscr.refresh()
     time.sleep(1.2)
     for i, ch in enumerate(text):
+        if ch != " ":
+            play("key%d.wav" % random.randint(0, 3))
         stdscr.addstr(y, x + i, ch, curses.color_pair(2) | curses.A_BOLD)
         # blinking block cursor after the char
         stdscr.addstr(y, x + i + 1, "█", curses.color_pair(1))
@@ -58,6 +72,7 @@ def ghost_type(stdscr, text, y=2, x=2, cps=(0.09, 0.22)):
         stdscr.addstr(y, x + len(text), " "); stdscr.refresh(); time.sleep(0.35)
 
 def dissolve(stdscr, text, y=2, x=2):
+    play("glitch.wav")
     idx = list(range(len(text)))
     random.shuffle(idx)
     for i in idx:
@@ -74,8 +89,9 @@ def main(stdscr):
     stdscr.bkgd(" ", curses.color_pair(1))
     stdscr.erase(); stdscr.refresh()
 
-    # cold open: silence, then faint rain builds
+    # cold open: silence, then faint rain builds under a low drone
     time.sleep(1.5)
+    ambient = play("drone.wav")
     rain(stdscr, 7, fade_in=True)
 
     lines = [
@@ -92,13 +108,15 @@ def main(stdscr):
     # the knock
     stdscr.erase(); stdscr.refresh()
     time.sleep(1.5)
-    knock(2)
+    knock()
+    time.sleep(1.3)
     ghost_type(stdscr, "Knock, knock, Neo.", cps=(0.12, 0.26))
     time.sleep(2.2)
 
     # rabbit + choice
     stdscr.erase()
     h, w = stdscr.getmaxyx()
+    play("rabbit.wav")
     msg = "🐇  follow the white rabbit — press any key"
     try:
         stdscr.addstr(h // 2, max(0, (w - len(msg)) // 2), msg, curses.color_pair(2) | curses.A_BOLD)
@@ -108,7 +126,10 @@ def main(stdscr):
     stdscr.getch()
 
     # swallowed back into the matrix
+    ambient = play("drone.wav")
     rain(stdscr, 6)
+    if ambient:
+        ambient.terminate()
     stdscr.erase()
     bye = "There is no spoon."
     try:
