@@ -11,7 +11,7 @@ The full sequence lives in `scripts/neo.py` (Python 3 + curses, no dependencies)
 
 ## How to run (macOS, the full experience)
 
-1. **Launch the script in its own dedicated Terminal window, in true macOS fullscreen** so it takes over the whole screen (no menu bar, no Dock). Use the built-in "Homebrew" profile (green on black), then send ⌃⌘F via System Events:
+1. **Launch the script in its own dedicated Terminal window and put that window into a native fullscreen Space** — that's what removes the macOS menu bar (it auto-hides in fullscreen, so every pixel belongs to the show). Use the built-in "Homebrew" profile (green on black), and set the window's `AXFullScreen` accessibility attribute (deterministic; the ⌃⌘F keystroke is only the fallback):
 
    ```bash
    osascript <<'EOF'
@@ -22,14 +22,25 @@ The full sequence lives in `scripts/neo.py` (Python 3 + curses, no dependencies)
        set current settings of w to settings set "Homebrew"
      end try
    end tell
-   delay 0.6
-   try
-     tell application "System Events" to keystroke "f" using {command down, control down}
-   end try
+   delay 0.5
+   tell application "System Events" to tell process "Terminal"
+     set frontmost to true
+     try
+       set value of attribute "AXFullScreen" of window 1 to true
+     on error
+       try
+         keystroke "f" using {command down, control down}
+       end try
+     end try
+   end tell
+   delay 1.2
+   tell application "System Events" to tell process "Terminal" to get value of attribute "AXFullScreen" of window 1
    EOF
    ```
 
-   Resolve `<absolute-path-to>` from this skill's own directory. Both `try` blocks matter: if the Homebrew profile was renamed, the show goes on in the default theme; if the keystroke fails (no Accessibility permission for the calling app), fall back to maximizing with `set bounds of front window to {0, 0, 2000, 1300}` inside the Terminal tell block instead — never abort the launch over fullscreen.
+   Resolve `<absolute-path-to>` from this skill's own directory. The last line echoes `true`/`false` so you can VERIFY fullscreen actually engaged — don't assume. The script is resize-proof: the rain adapts to the fullscreen transition mid-fade instead of skipping. If the result is `false`, both fullscreen paths were blocked by a missing Accessibility permission for the app hosting the session; fall back to `tell application "Terminal" to set bounds of front window to {0, 0, 2400, 1500}`, and tell the user granting Accessibility (System Settings → Privacy & Security → Accessibility) enables true fullscreen next time. Never abort the launch over fullscreen.
+
+   Menu-bar caveat: macOS hides the menu bar in a fullscreen Space by default (it only peeks when the mouse touches the top edge). If it stays permanently visible, the user's System Settings keeps the menu bar shown in full screen (Control Center → "Automatically hide and show the menu bar"); point that out — never change their settings yourself.
 
 2. **Schedule the out-of-band knock** — a macOS notification that arrives roughly when the on-screen knock scene plays (~40 s in). Run it as a background task so it doesn't block:
 
@@ -39,18 +50,18 @@ The full sequence lives in `scripts/neo.py` (Python 3 + curses, no dependencies)
 
    This is the touch that reaches *outside* the terminal — keep it unless the user asks for a silent run.
 
-3. **Tell the user what's happening** only AFTER launching — the surprise is part of the experience. Then briefly narrate the sequence: rain fades in → three ghost-typed messages that dissolve → two knocks + "Knock, knock, Neo." → white rabbit waits for a keypress → rain swallows the screen → "There is no spoon."
+3. **Tell the user what's happening** only AFTER launching — the surprise is part of the experience. Then briefly narrate the sequence: rain fades in → three ghost-typed messages that dissolve → a knock at the door + "Knock, knock, Neo." → white rabbit waits for a keypress → rain swallows the screen → "There is no spoon."
 
 ## Sequence timing (for reference, not for editing)
 
-The script is self-contained: ~1.5 s of black silence, ~7 s of rain fading in under a low drone, each message types at 90–220 ms per character with a blinking block cursor (each keystroke clicks), dissolves character-by-character with a digital glitch, a deep double door-knock plays before "Knock, knock, Neo.", a soft ping marks the white rabbit, and the finale waits for any keypress.
+The script is self-contained: ~1.5 s of black silence, ~7 s of rain fading in under a low drone, each message types at 90–220 ms per character with a blinking block cursor (each character ticks), dissolves character-by-character with a digital glitch, three quick knuckle-raps on a hollow door play before "Knock, knock, Neo.", a soft ping marks the white rabbit, and the finale waits for any keypress. The curses code is resize-proof: `KEY_RESIZE` events (fullscreen transitions, window drags) re-size the rain grid and re-center text instead of skipping scenes.
 
 ## Sound assets
 
 All sounds are synthesized `.wav` files bundled in `assets/` and played with `afplay` (non-blocking; missing files are silently skipped):
 
-- `key0.wav`–`key3.wav` — mechanical keystroke clacks, one picked at random per typed character
-- `knock.wav` — deep double knuckles-on-wood knock
+- `key0.wav`–`key3.wav` — dry, sharp terminal data-ticks (movie-style, not keyboard clacks), one picked at random per typed character
+- `knock.wav` — three quick knuckle-raps on a hollow wooden apartment door, with room reflections
 - `drone.wav` — 12 s low ominous pad under the rain (self-fading)
 - `glitch.wav` — descending digital zipper when a message dissolves
 - `rabbit.wav` — soft bright ping for the white-rabbit prompt

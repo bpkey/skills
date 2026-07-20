@@ -49,7 +49,19 @@ def rain(stdscr, seconds, fade_in=False):
                 cols[x] = random.randint(-20, 0)
                 speed[x] = random.choice([1, 1, 1, 2])
         stdscr.refresh()
-        if stdscr.getch() != -1:
+        ch = stdscr.getch()
+        if ch == curses.KEY_RESIZE:
+            # window resized (e.g. fullscreen transition) — adapt, never skip
+            try:
+                curses.update_lines_cols()
+            except Exception:
+                pass
+            h, w = stdscr.getmaxyx()
+            while len(cols) < w:
+                cols.append(random.randint(-h, 0))
+                speed.append(random.choice([1, 1, 1, 2]))
+            stdscr.erase()
+        elif ch != -1:
             break
         time.sleep(0.045)
     stdscr.nodelay(False)
@@ -60,23 +72,40 @@ def ghost_type(stdscr, text, y=2, x=2, cps=(0.09, 0.22)):
     for i, ch in enumerate(text):
         if ch != " ":
             play("key%d.wav" % random.randint(0, 3))
-        stdscr.addstr(y, x + i, ch, curses.color_pair(2) | curses.A_BOLD)
-        # blinking block cursor after the char
-        stdscr.addstr(y, x + i + 1, "█", curses.color_pair(1))
+        try:
+            stdscr.addstr(y, x + i, ch, curses.color_pair(2) | curses.A_BOLD)
+            # blinking block cursor after the char
+            stdscr.addstr(y, x + i + 1, "█", curses.color_pair(1))
+        except curses.error:
+            pass
         stdscr.refresh()
         time.sleep(random.uniform(*cps))
-        stdscr.addstr(y, x + i + 1, " ")
+        try:
+            stdscr.addstr(y, x + i + 1, " ")
+        except curses.error:
+            pass
     # blink cursor a few times
     for _ in range(4):
-        stdscr.addstr(y, x + len(text), "█", curses.color_pair(1)); stdscr.refresh(); time.sleep(0.4)
-        stdscr.addstr(y, x + len(text), " "); stdscr.refresh(); time.sleep(0.35)
+        try:
+            stdscr.addstr(y, x + len(text), "█", curses.color_pair(1))
+        except curses.error:
+            pass
+        stdscr.refresh(); time.sleep(0.4)
+        try:
+            stdscr.addstr(y, x + len(text), " ")
+        except curses.error:
+            pass
+        stdscr.refresh(); time.sleep(0.35)
 
 def dissolve(stdscr, text, y=2, x=2):
     play("glitch.wav")
     idx = list(range(len(text)))
     random.shuffle(idx)
     for i in idx:
-        stdscr.addstr(y, x + i, " ")
+        try:
+            stdscr.addstr(y, x + i, " ")
+        except curses.error:
+            pass
         stdscr.refresh()
         time.sleep(0.03)
 
@@ -113,17 +142,19 @@ def main(stdscr):
     ghost_type(stdscr, "Knock, knock, Neo.", cps=(0.12, 0.26))
     time.sleep(2.2)
 
-    # rabbit + choice
-    stdscr.erase()
-    h, w = stdscr.getmaxyx()
+    # rabbit + choice (re-center on resize; only a real key advances)
     play("rabbit.wav")
     msg = "🐇  follow the white rabbit — press any key"
-    try:
-        stdscr.addstr(h // 2, max(0, (w - len(msg)) // 2), msg, curses.color_pair(2) | curses.A_BOLD)
-    except curses.error:
-        pass
-    stdscr.refresh()
-    stdscr.getch()
+    while True:
+        stdscr.erase()
+        h, w = stdscr.getmaxyx()
+        try:
+            stdscr.addstr(h // 2, max(0, (w - len(msg)) // 2), msg, curses.color_pair(2) | curses.A_BOLD)
+        except curses.error:
+            pass
+        stdscr.refresh()
+        if stdscr.getch() != curses.KEY_RESIZE:
+            break
 
     # swallowed back into the matrix
     ambient = play("drone.wav")
@@ -131,6 +162,7 @@ def main(stdscr):
     if ambient:
         ambient.terminate()
     stdscr.erase()
+    h, w = stdscr.getmaxyx()
     bye = "There is no spoon."
     try:
         stdscr.addstr(h // 2, max(0, (w - len(bye)) // 2), bye, curses.color_pair(2) | curses.A_BOLD)

@@ -10,10 +10,12 @@ SR = 44100
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
 
 
-def write_wav(name, samples):
+def write_wav(name, samples, peak=None):
+    """peak=None: only normalize DOWN if clipping; peak=x: normalize to exactly x."""
     os.makedirs(OUT, exist_ok=True)
-    peak = max(1e-9, max(abs(s) for s in samples))
-    norm = 0.9 / peak if peak > 0.9 else 1.0
+    top = max(1e-9, max(abs(s) for s in samples))
+    target = peak if peak is not None else min(0.9, top)
+    norm = target / top
     path = os.path.join(OUT, name)
     with wave.open(path, "wb") as w:
         w.setnchannels(1)
@@ -34,39 +36,64 @@ def env_exp(n, decay):
 
 
 def key_click(seed):
-    """Mechanical keyboard clack: filtered noise burst + tiny resonant ping."""
+    """Movie-style terminal tick: a dry, sharp data-click — no keyboard thock.
+
+    Very short (~22 ms), all high-mid energy: high-passed noise snap plus a
+    bright resonance, decaying almost instantly. Four seeds give four
+    slightly different pitches so rapid typing doesn't sound machine-gun.
+    """
     rng = random.Random(seed)
-    n = int(SR * 0.055)
-    freq = rng.uniform(1800, 2600)
-    out, lp = [], 0.0
-    for i, e in enumerate(env_exp(n, 90)):
-        noise = rng.uniform(-1, 1)
-        lp += 0.45 * (noise - lp)                      # crude low-pass on the noise
-        ping = 0.35 * math.sin(2 * math.pi * freq * i / SR)
-        out.append((0.8 * lp + ping) * e)
-    # bottom-out thock
-    for i, e in enumerate(env_exp(int(SR * 0.03), 140)):
-        out[i] += 0.5 * math.sin(2 * math.pi * 160 * i / SR) * e
-    return out
-
-
-def knock():
-    """Deep knuckles-on-wood: low damped thump + short knock transient."""
-    n = int(SR * 0.35)
-    rng = random.Random(7)
-    out = []
+    n = int(SR * 0.022)
+    f1 = rng.uniform(3100, 5200)          # bright click resonance
+    f2 = f1 * rng.uniform(1.9, 2.3)       # faint upper partial
+    out, hp, prev = [], 0.0, 0.0
     for i in range(n):
         t = i / SR
-        e = math.exp(-18 * t)
-        body = math.sin(2 * math.pi * 82 * t * (1 - 0.3 * t)) * e      # pitch droops
-        wood = 0.4 * math.sin(2 * math.pi * 190 * t) * math.exp(-30 * t)
-        crack = 0.5 * rng.uniform(-1, 1) * math.exp(-220 * t)
-        out.append(body + wood + crack)
+        e = math.exp(-380 * t)
+        noise = rng.uniform(-1, 1)
+        hp = 0.65 * (hp + noise - prev)   # crude high-pass on the noise
+        prev = noise
+        tone = math.sin(2 * math.pi * f1 * t) + 0.35 * math.sin(2 * math.pi * f2 * t)
+        out.append((0.5 * hp + 0.7 * tone) * e)
     return out
 
 
-def double_knock():
-    return knock() + silence(0.28) + knock()
+def knock_rap(rng, strength=1.0, detune=1.0):
+    """One rap on a hollow wooden door: knuckle thwack + ringing panel modes."""
+    n = int(SR * 0.55)
+    modes = [(66 * detune, 22, 1.0), (109 * detune, 28, 0.75), (172 * detune, 36, 0.5),
+             (243 * detune, 48, 0.35), (327 * detune, 60, 0.22)]
+    out, lp = [], 0.0
+    for i in range(n):
+        t = i / SR
+        s = 0.0
+        for f, d, a in modes:
+            s += a * math.sin(2 * math.pi * f * t) * math.exp(-d * t)
+        noise = rng.uniform(-1, 1)
+        lp += 0.25 * (noise - lp)
+        s += 1.6 * lp * math.exp(-90 * t)             # knuckle impact thwack
+        out.append(strength * 0.5 * s)
+    return out
+
+
+def door_knock():
+    """Three quick knuckle-raps on an apartment door, with room reflections."""
+    rng = random.Random(7)
+    raps = [(0.0, 1.0), (0.165, 0.92), (0.335, 1.05)]  # quick knock-knock-knock
+    total = int(SR * 1.5)
+    dry = [0.0] * total
+    for at, strength in raps:
+        rap = knock_rap(rng, strength, detune=rng.uniform(0.96, 1.04))
+        o = int(SR * at)
+        for i, s in enumerate(rap):
+            if o + i < total:
+                dry[o + i] += s
+    out = dry[:]
+    for delay, gain in ((0.021, 0.30), (0.043, 0.22), (0.071, 0.15), (0.113, 0.09)):
+        d = int(SR * delay)
+        for i in range(d, total):
+            out[i] += gain * dry[i - d]
+    return out
 
 
 def drone(sec):
@@ -114,8 +141,8 @@ def rabbit():
 
 if __name__ == "__main__":
     for i in range(4):
-        write_wav(f"key{i}.wav", key_click(seed=11 + i))
-    write_wav("knock.wav", double_knock())
+        write_wav(f"key{i}.wav", key_click(seed=11 + i), peak=0.5)
+    write_wav("knock.wav", door_knock(), peak=0.9)
     write_wav("drone.wav", drone(12.0))
     write_wav("glitch.wav", glitch())
     write_wav("rabbit.wav", rabbit())
