@@ -42,19 +42,19 @@ The full sequence lives in `scripts/neo.py` (Python 3 + curses, no dependencies)
 
    Menu-bar caveat: macOS hides the menu bar in a fullscreen Space by default (it only peeks when the mouse touches the top edge). If it stays permanently visible, the user's System Settings keeps the menu bar shown in full screen (Control Center → "Automatically hide and show the menu bar"); point that out — never change their settings yourself.
 
-2. **Schedule the out-of-band knock** — a macOS notification that arrives roughly when the on-screen knock scene plays (~40 s in). Run it as a background task so it doesn't block:
+2. **Schedule the out-of-band knock** — a macOS notification that arrives roughly when the door-knock plays (~45 s in, right after "Knock, knock, Neo." finishes typing). Run it as a background task so it doesn't block:
 
    ```bash
-   (sleep 40 && osascript -e 'display notification "Knock, knock, Neo." with title "Unknown" sound name "Bottle"') &
+   (sleep 45 && osascript -e 'display notification "Knock, knock, Neo." with title "Unknown" sound name "Bottle"') &
    ```
 
    This is the touch that reaches *outside* the terminal — keep it unless the user asks for a silent run.
 
-3. **Tell the user what's happening** only AFTER launching — the surprise is part of the experience. Then briefly narrate the sequence: rain fades in → three ghost-typed messages that dissolve → a knock at the door + "Knock, knock, Neo." → white rabbit waits for a keypress → rain swallows the screen → "There is no spoon."
+3. **Tell the user what's happening** only AFTER launching — the surprise is part of the experience. Then briefly narrate the sequence: rain fades in → three ghost-typed messages that dissolve → "Knock, knock, Neo." types, then knuckles rap the door → white rabbit waits for a keypress → rain slowly devours the screen → "There is no spoon."
 
 ## Sequence timing (for reference, not for editing)
 
-The script is self-contained: ~1.5 s of black silence, ~7 s of rain fading in under a low drone, each message types at 90–220 ms per character with a blinking block cursor (each character ticks), dissolves character-by-character with a digital glitch, three quick knuckle-raps on a hollow door play before "Knock, knock, Neo.", a soft ping marks the white rabbit, and the finale waits for any keypress. The curses code is resize-proof: `KEY_RESIZE` events (fullscreen transitions, window drags) re-size the rain grid and re-center text instead of skipping scenes.
+The script is self-contained: ~1.5 s of black silence, ~7 s of rain fading in under a low drone, each message types at 90–220 ms per character with a blinking block cursor (each character ticks), dissolves character-by-character with a digital glitch, "Knock, knock, Neo." types first and THEN three quick knuckle-raps hit the door (screen first, reality answers — movie order), a soft ping marks the white rabbit, and after the keypress the final rain devours the lingering text (it never clears the screen first — that overwrite IS the animation, and it is deliberately non-skippable). Input hygiene: queued keypresses are drained before the rabbit prompt and before each rain, so stray keys can't fast-forward scenes. The curses code is resize-proof: `KEY_RESIZE` events (fullscreen transitions, window drags) re-size the rain grid and re-center text instead of skipping scenes.
 
 ## Sound assets
 

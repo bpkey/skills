@@ -23,12 +23,14 @@ def play(name, blocking=False):
 def knock():
     play("knock.wav")
 
-def rain(stdscr, seconds, fade_in=False):
+def rain(stdscr, seconds, fade_in=False, skippable=True):
+    stdscr.nodelay(True)
+    while stdscr.getch() != -1:
+        pass  # drain stale input (key repeats, queued presses, old resizes)
     h, w = stdscr.getmaxyx()
     cols = [random.randint(-h, 0) for _ in range(w)]
     speed = [random.choice([1, 1, 1, 2]) for _ in range(w)]
     start = time.time()
-    stdscr.nodelay(True)
     while time.time() - start < seconds:
         for x in range(w - 1):
             if fade_in and random.random() > min(1.0, (time.time()-start)/2.0):
@@ -61,12 +63,12 @@ def rain(stdscr, seconds, fade_in=False):
                 cols.append(random.randint(-h, 0))
                 speed.append(random.choice([1, 1, 1, 2]))
             stdscr.erase()
-        elif ch != -1:
+        elif ch != -1 and skippable:
             break
         time.sleep(0.045)
     stdscr.nodelay(False)
 
-def ghost_type(stdscr, text, y=2, x=2, cps=(0.09, 0.22)):
+def ghost_type(stdscr, text, y=2, x=2, cps=(0.09, 0.22), blinks=4):
     stdscr.erase(); stdscr.refresh()
     time.sleep(1.2)
     for i, ch in enumerate(text):
@@ -134,15 +136,18 @@ def main(stdscr):
         dissolve(stdscr, ln)
         time.sleep(0.8)
 
-    # the knock
+    # the knock — the screen calls it, then reality answers
     stdscr.erase(); stdscr.refresh()
     time.sleep(1.5)
+    ghost_type(stdscr, "Knock, knock, Neo.", cps=(0.12, 0.26), blinks=2)
     knock()
-    time.sleep(1.3)
-    ghost_type(stdscr, "Knock, knock, Neo.", cps=(0.12, 0.26))
-    time.sleep(2.2)
+    time.sleep(2.6)
 
-    # rabbit + choice (re-center on resize; only a real key advances)
+    # rabbit + choice (re-center on resize; only a fresh, real key advances)
+    stdscr.nodelay(True)
+    while stdscr.getch() != -1:
+        pass  # drain queued input so a stray earlier keypress can't dismiss the rabbit
+    stdscr.nodelay(False)
     play("rabbit.wav")
     msg = "🐇  follow the white rabbit — press any key"
     while True:
@@ -156,9 +161,9 @@ def main(stdscr):
         if stdscr.getch() != curses.KEY_RESIZE:
             break
 
-    # swallowed back into the matrix
+    # swallowed back into the matrix — the finale always plays out
     ambient = play("drone.wav")
-    rain(stdscr, 6)
+    rain(stdscr, 6, skippable=False)
     if ambient:
         ambient.terminate()
     stdscr.erase()
