@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code status line renderer.
 #
-# Layout:  <context%>  <cwd> [<branch>] [<worktree>]  <model>  <effort>
+# Layout:  <context%> <$cost>  <cwd> [<branch>] [<worktree>]  <model>  <effort>
 #
 # Claude Code pipes the status-line JSON to this script on stdin on every
 # turn; see https://docs.claude.com/en/docs/claude-code/statusline for the
@@ -23,12 +23,13 @@ fi
 # empty fields, so a missing effort+worktree would shift the percentage into
 # the wrong slot. The percentage is floored to a whole number in jq (and
 # emptied when null, early in the session) so it arrives as a clean integer.
-IFS=$'\x1f' read -r cwd model effort worktree pct < <(printf '%s' "$input" | jq -r '
+IFS=$'\x1f' read -r cwd model effort worktree pct cost < <(printf '%s' "$input" | jq -r '
   [ (.workspace.current_dir // .cwd // ""),
     (.model.display_name // ""),
     (.effort.level // ""),
     (.workspace.git_worktree // .worktree.name // ""),
-    (.context_window.used_percentage | if type == "number" then (floor | tostring) else "" end)
+    (.context_window.used_percentage | if type == "number" then (floor | tostring) else "" end),
+    (.cost.total_cost_usd | if type == "number" then (. * 100 | round / 100 | tostring) else "" end)
   ] | join("")')
 
 # Collapse $HOME → ~ for a shorter, readable path.
@@ -67,6 +68,7 @@ append() { # $1 = text, $2 = separator to use when the line already has content
 }
 
 append "$pct_segment" "  "
+[ -n "$cost" ] && append "\$$cost" " "
 append "$cwd" "  "
 [ -n "$branch" ]   && append "[$branch]" " "
 [ -n "$worktree" ] && append "[$worktree]" " "

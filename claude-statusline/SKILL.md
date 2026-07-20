@@ -1,6 +1,6 @@
 ---
 name: claude-statusline
-description: Set up Claude Code's status line to show, left to right, the percentage of the context window used, the current working directory, the git branch in [brackets], the git worktree in [brackets], the model name, and the reasoning effort level. Use whenever the user invokes /claude-statusline, or asks to "set up my status line", "configure the statusline", "show branch and context in my status bar", "add the model and context percent to my status line", "give me a status line with cwd, branch, model, and context %", or otherwise wants this specific status line layout in Claude Code. Claude Code only — it writes ~/.claude/settings.json's .statusLine key, which no other AI tool reads.
+description: Set up Claude Code's status line to show, left to right, the percentage of the context window used, the conversation cost in USD, the current working directory, the git branch in [brackets], the git worktree in [brackets], the model name, and the reasoning effort level. Use whenever the user invokes /claude-statusline, or asks to "set up my status line", "configure the statusline", "show branch and context in my status bar", "add the model and context percent to my status line", "give me a status line with cwd, branch, model, and context %", or otherwise wants this specific status line layout in Claude Code. Claude Code only — it writes ~/.claude/settings.json's .statusLine key, which no other AI tool reads.
 ---
 
 # /claude-statusline
@@ -8,13 +8,13 @@ description: Set up Claude Code's status line to show, left to right, the percen
 Configures the Claude Code status line to render this layout on every turn:
 
 ```
-<context%>  <cwd> [<branch>] [<worktree>]  <model>  <effort>
+<context%> <$cost>  <cwd> [<branch>] [<worktree>]  <model>  <effort>
 ```
 
 For example:
 
 ```
-37%  ~/repo/skills [main] [feat-x]  Opus 4.7  high
+37% $1.23  ~/repo/skills [main] [feat-x]  Opus 4.7  high
 ```
 
 This is the same end state the built-in `/statusline` command produces, but pinned to this exact layout and installed deterministically — no LLM regenerates the script each time, so the result is identical on every machine.
@@ -24,6 +24,7 @@ This is the same end state the built-in `/statusline` command produces, but pinn
 | Segment | Source | Notes |
 |---|---|---|
 | context% | `.context_window.used_percentage` | omitted until the first model response sets it; **orange at 10–14%, red at 15%+**, plain below 10% |
+| $cost | `.cost.total_cost_usd` | conversation cost in USD, rounded to cents; omitted when not reported |
 | cwd | `.workspace.current_dir` (falls back to `.cwd`) | `$HOME` shown as `~` |
 | `[branch]` | `git branch --show-current` in the session's cwd | branch isn't in the JSON, so it's read from git |
 | `[worktree]` | `.workspace.git_worktree` (falls back to `.worktree.name`) | only shown in a linked git worktree |
