@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""ui-ios — drive a booted iOS Simulator by accessibility element, not pixels.
+
+A semantic wrapper over `idb ui *` (Meta's iOS Development Bridge). It starts idb_companion
+on demand, so there is no daemon to remember, and it starts it with a scrubbed environment
+(see ensure_companion below for why that matters).
+
+  ui-ios tree [--json]        accessibility elements of the foreground app
+  ui-ios find QUERY           elements whose label / identifier / value match
+  ui-ios tap QUERY            tap the centre of the best match
+  ui-ios type TEXT            type into the focused field
+  ui-ios key CODE             HID keycode: 40 Return, 41 Esc, 42 Backspace, 43 Tab
+  ui-ios button NAME          HOME | LOCK | SIDE_BUTTON | SIRI | APPLE_PAY
+  ui-ios swipe X1 Y1 X2 Y2    drag (intermediate touch points are supplied automatically)
+  ui-ios probe X Y            describe the element under a point
+  ui-ios scan [STEP]          grid-probe the screen — the only way to reach WebKit page
+                              content, which `tree` cannot see. Slow: ~10-15s.
+  ui-ios shot FILE.png        screenshot, for when you need to see it
+
+QUERY matches label, identifier and value, case-insensitively, as a substring. When several
+elements match, the smallest wins — the actual control rather than a container around it.
+
+Target: $IDB_UDID, else the single booted simulator.
+Requires: brew tap facebook/fb && brew trust facebook/fb && brew install idb-companion
+          brew install pipx && pipx install --python python3.12 fb-idb
+"""
+
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+
+PORT = int(os.environ.get("IDB_COMPANION_PORT", "10882"))
+IDB = os.environ.get("IDB_BIN") or shutil.which("idb")
+COMPANION = os.environ.get("IDB_COMPANION_BIN") or shutil.which("idb_companion")
+
+# Fallback logical screen size, only used if the tree exposes no root frame.
+FALLBACK_SCREEN = (402, 874)
+
+_udid = None
+
+
+def udid() -> str:
+    global _udid
+    if _udid:
+        return _udid
+    _udid = os.environ.get("IDB_UDID")
+    if not _udid:
+        out = subprocess.run(
+            ["xcrun", "simctl", "list", "devices", "booted"],
+            capture_output=True, text=True,
+        ).stdout
+        found = re.findall(r"\(([0-9A-Fa-f-]{36})\) \(Booted\)", out)
+        if len(found) != 1:
+            sys.exit(
+                f"ui-ios: expected exactly one booted simulator, found {len(found)}.\n"
+                "Boot one with `xcrun simctl boot <name>`, or set IDB_UDID to pick."
+            )
+        _udid = found[0]
+    return _udid
+
+
+def companion_up() -> bool:
+    with socket.socket() as s:
+        s.settimeout(0.4)
+        return s.connect_ex(("127.0.0.1", PORT)) == 0
+
+
+def ensure_companion() -> None:
+    if companion_up():
+        return
+    if not COMPANION:
+        sys.exit(
+            "ui-ios: idb_companion not found on PATH.\n"
+            "  brew tap facebook/fb && brew trust facebook/fb && brew install idb-companion"
+        )
+    cache = os.path.join(
+        os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "ui-ios"
+    )
+    os.makedirs(cache, exist_ok=True, mode=0o700)
+    logfile = os.path.join(cache, "companion.log")
+    # idb_companion writes its entire process environment into the log at startup, at
+    # every log level. Started from an ordinary shell that means every exported API key
+    # and token lands on disk in plaintext. Hand it a minimal environment instead, and
+    # keep the log owner-only regardless.
+    safe_env = {
+        k: v
+        for k, v in os.environ.items()
+        if k in ("PATH", "HOME", "USER", "LANG", "TMPDIR", "SHELL", "DEVELOPER_DIR")
+    }
+    fd = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    subprocess.Popen(
+        [COMPANION, "--udid", udid(), "--grpc-port", str(PORT), "--log-level", "info"],
+        stdout=subprocess.DEVNULL, stderr=fd, stdin=subprocess.DEVNULL,
+        env=safe_env, start_new_session=True,
+    )
+    os.close(fd)
+    for _ in range(50):
+        time.sleep(0.4)
+        if companion_up():
+            return
+    sys.exit(f"ui-ios: idb_companion did not come up on port {PORT}; see {logfile}")
+
+
+def idb(*args: str) -> str:
+    if not IDB:
+        sys.exit(
+            "ui-ios: `idb` not found on PATH.\n"
+            "  brew install pipx && pipx install --python python3.12 fb-idb\n"
+            "Pin Python 3.12 — the client crashes on 3.14 (asyncio.get_event_loop was removed)."
+        )
+    ensure_companion()
+    r = subprocess.run(
+        [IDB, "ui", *args, "--udid", udid()], capture_output=True, text=True
+    )
+    if r.returncode != 0:
+        sys.exit(f"ui-ios: `idb ui {' '.join(args)}` failed:\n{r.stderr.strip()}")
+    return r.stdout
+
+
+def tree() -> list:
+    return json.loads(idb("describe-all"))
+
+
+def screen(elements) -> tuple:
+    """Logical screen size, taken from the largest frame in the tree."""
+    best, area = None, 0
+    for e in elements:
+        f = e.get("frame") or {}
+        if f and f["width"] * f["height"] > area:
+            best, area = f, f["width"] * f["height"]
+    if best:
+        return int(best["x"] + best["width"]), int(best["y"] + best["height"])
+    return FALLBACK_SCREEN
+
+
+def centre(e: dict):
+    f = e.get("frame") or {}
+    if not f:
+        return None
+    return f["x"] + f["width"] / 2, f["y"] + f["height"] / 2
+
+
+def area(e: dict) -> float:
+    f = e.get("frame") or {}
+    return f["width"] * f["height"] if f else float("inf")
+
+
+def fmt(e: dict) -> str:
+    c = centre(e)
+    pos = f"@({c[0]:.0f},{c[1]:.0f})" if c else "@(?)"
+    f = e.get("frame") or {}
+    size = f"{f['width']:.0f}x{f['height']:.0f}" if f else ""
+    ident = f" id={e['AXUniqueId']}" if e.get("AXUniqueId") else ""
+    val = f" value={e['AXValue']!r}" if e.get("AXValue") else ""
+    off = "" if e.get("enabled", True) else " [disabled]"
+    return f"{str(e.get('type')):<13} {str(e.get('AXLabel')):<44}{ident}{val}{off}  {pos} {size}"
+
+
+def matches(elements, q: str) -> list:
+    if len(q) > 2 and q.startswith("/") and q.endswith("/"):
+        pat = re.compile(q[1:-1], re.I)
+        def hit(blob):
+            return bool(pat.search(blob))
+    else:
+        ql = q.lower()
+        def hit(blob):
+            return ql in blob.lower()
+    found = [
+        e for e in elements
+        if hit(" ".join(str(e.get(k) or "") for k in ("AXLabel", "AXUniqueId", "AXValue")))
+    ]
+    found.sort(key=area)
+    return found
+
+
+def scan(step: int) -> list:
+    """Grid-probe the screen. describe-all cannot see WebKit content, describe-point can."""
+    w, h = screen(tree())
+    seen = {}
+    for y in range(40, h, step):
+        for x in range(8, w, step):
+            r = subprocess.run(
+                [IDB, "ui", "describe-point", "--udid", udid(), str(x), str(y)],
+                capture_output=True, text=True,
+            )
+            if r.returncode:
+                continue
+            try:
+                e = json.loads(r.stdout)
+            except json.JSONDecodeError:
+                continue
+            seen.setdefault(str(e.get("AXFrame") or e.get("frame") or f"{x},{y}"), e)
+    return list(seen.values())
+
+
+def main() -> None:
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print(__doc__)
+        return
+    cmd, args = sys.argv[1], sys.argv[2:]
+
+    def need(n, usage):
+        if len(args) < n:
+            sys.exit(f"ui-ios: {usage}")
+
+    if cmd == "tree":
+        elements = tree()
+        print(json.dumps(elements, indent=2) if "--json" in args
+              else "\n".join(fmt(e) for e in elements))
+
+    elif cmd in ("find", "tap"):
+        need(1, f"{cmd} needs a QUERY")
+        elements = tree()
+        found = matches(elements, args[0])
+        if not found:
+            listing = "\n".join(fmt(e) for e in elements)
+            sys.exit(
+                f"ui-ios: no element matching {args[0]!r}\n"
+                f"--- elements on screen ---\n{listing}\n"
+                "If this is a web page, `tree` cannot see its content — try `ui-ios scan`."
+            )
+        if cmd == "find":
+            print("\n".join(fmt(e) for e in found))
+            return
+        e = found[0]
+        if not e.get("enabled", True):
+            sys.exit(f"ui-ios: {e.get('AXLabel')!r} is disabled")
+        c = centre(e)
+        if not c:
+            sys.exit(f"ui-ios: {e.get('AXLabel')!r} has no frame")
+        idb("tap", str(round(c[0])), str(round(c[1])))
+        print(f"tapped {e.get('AXLabel')!r} ({e.get('type')}) at ({c[0]:.0f},{c[1]:.0f})")
+
+    elif cmd == "type":
+        need(1, "type needs text")
+        idb("text", args[0])
+        print(f"typed {args[0]!r}")
+
+    elif cmd == "key":
+        need(1, "key needs a HID keycode, e.g. 40 for Return")
+        idb("key", args[0])
+        print(f"key {args[0]}")
+
+    elif cmd == "button":
+        need(1, "button needs a name, e.g. HOME")
+        idb("button", args[0].upper())
+        print(f"button {args[0].upper()}")
+
+    elif cmd == "swipe":
+        need(4, "swipe needs X1 Y1 X2 Y2")
+        # --delta supplies intermediate touch points. Without it the gesture is delivered
+        # as a single jump, which the system does not read as a drag: the command succeeds
+        # and nothing scrolls.
+        idb("swipe", "--duration", "0.25", "--delta", "12", *args[:4])
+        print(f"swiped {' '.join(args[:4])}")
+
+    elif cmd == "probe":
+        need(2, "probe needs X Y")
+        print(json.dumps(json.loads(idb("describe-point", args[0], args[1])), indent=2))
+
+    elif cmd == "scan":
+        step = int(args[0]) if args else 40
+        print("\n".join(fmt(e) for e in scan(step)))
+
+    elif cmd == "shot":
+        need(1, "shot needs an output path, e.g. screen.png")
+        subprocess.run(
+            ["xcrun", "simctl", "io", udid(), "screenshot", args[0]], check=True
+        )
+        print(f"wrote {args[0]}")
+
+    else:
+        sys.exit(f"ui-ios: unknown command {cmd!r} — run with --help")
+
+
+if __name__ == "__main__":
+    main()

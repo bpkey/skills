@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""ui-android — drive an Android device or emulator by accessibility node, not pixels.
+
+`adb shell uiautomator dump` serialises the AccessibilityNodeInfo tree, so elements can be
+located by their accessibility label, visible text, or resource-id. Tap points are computed
+from each node's own bounds, so no coordinate ever has to be guessed from a screenshot.
+
+  ui-android tree [-a]        interactable nodes (-a for every node)
+  ui-android find QUERY       show matching nodes
+  ui-android tap QUERY        tap the centre of the best match
+  ui-android type TEXT        type into the focused field
+  ui-android focus            show the focused node
+  ui-android key NAME         TAB, ENTER, BACK, HOME, DPAD_DOWN, ... (or a raw KEYCODE_*)
+  ui-android shot FILE.png    screenshot, for when you need to see it
+  ui-android enable-a11y      make web content inside WebViews visible to the tree
+  ui-android disable-a11y     undo that
+
+QUERY matches text, content-desc and resource-id, case-insensitively, as a substring.
+Wrap it in /.../ for a regular expression. When several nodes match, the smallest wins —
+that is the actual control rather than a container that inherited the same label.
+
+Add -s SERIAL to target one of several attached devices (same meaning as `adb -s`).
+
+Requires: adb on PATH.
+"""
+
+import argparse
+import re
+import shutil
+import subprocess
+import sys
+
+# Reads the tree without owning input. TalkBack would also expose web content, but it
+# rewrites touch handling (single tap becomes explore-by-touch), breaking `input tap`.
+A11Y_SERVICE = (
+    "com.android.systemui.accessibility.accessibilitymenu/.AccessibilityMenuService"
+)
+
+NAME_ATTRS = ("text", "content-desc", "resource-id")
+DEVICE_XML = "/sdcard/.ui-android.xml"
+
+
+def adb_cmd(args, serial=None):
+    if not shutil.which("adb"):
+        sys.exit(
+            "ui-android: `adb` not found on PATH.\n"
+            "Install the Android platform-tools and add them to PATH — see references/android.md."
+        )
+    return ["adb"] + (["-s", serial] if serial else []) + args
+
+
+def adb(args, serial=None):
+    return subprocess.run(adb_cmd(args, serial), capture_output=True, text=True)
+
+
+def adb_binary(args, serial=None):
+    """Run adb and return raw bytes — screencap output must not be decoded as text."""
+    return subprocess.run(adb_cmd(args, serial), capture_output=True).stdout
+
+
+def dump(serial=None):
+    """Return the accessibility tree as a list of attribute dicts."""
+    r = adb(["shell", "uiautomator", "dump", DEVICE_XML], serial)
+    blob = r.stdout + r.stderr
+    if "dumped to" not in blob:
+        msg = blob.strip() or "no output"
+        if "no devices" in msg or "device offline" in msg:
+            msg += "\nIs the emulator booted? Check with `adb devices -l`."
+        sys.exit(f"ui-android: uiautomator dump failed: {msg}")
+    xml = adb(["exec-out", "cat", DEVICE_XML], serial).stdout
+    nodes = []
+    for raw in re.findall(r"<node[^>]*>", xml):
+        d = dict(re.findall(r'(\S+?)="([^"]*)"', raw))
+        m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", d.get("bounds", ""))
+        if m:
+            x1, y1, x2, y2 = map(int, m.groups())
+            d["_centre"] = ((x1 + x2) // 2, (y1 + y2) // 2)
+            d["_area"] = (x2 - x1) * (y2 - y1)
+        nodes.append(d)
+    return nodes
+
+
+def label(n):
+    for a in NAME_ATTRS:
+        if n.get(a):
+            return n[a]
+    return n.get("class", "?")
+
+
+def interactable(n):
+    return any(
+        n.get(k) == "true"
+        for k in ("clickable", "checkable", "focusable", "scrollable", "long-clickable")
+    )
+
+
+def matches(n, query):
+    if len(query) > 2 and query.startswith("/") and query.endswith("/"):
+        pat = re.compile(query[1:-1], re.I)
+        return any(pat.search(n.get(a, "")) for a in NAME_ATTRS)
+    q = query.lower()
+    return any(q in n.get(a, "").lower() for a in NAME_ATTRS)
+
+
+def find(nodes, query):
+    hits = [n for n in nodes if "_centre" in n and matches(n, query)]
+    hits.sort(key=lambda n: n.get("_area", 1 << 30))
+    return hits
+
+
+def show(n):
+    flags = ",".join(
+        k
+        for k in ("clickable", "focusable", "focused", "scrollable", "checked")
+        if n.get(k) == "true"
+    )
+    rid = n.get("resource-id", "")
+    cls = n.get("class", "").rsplit(".", 1)[-1]
+    return (
+        f"  {label(n)!r:<46} {n.get('bounds', ''):<26} {cls:<14}"
+        f"{' [' + flags + ']' if flags else ''}{'  ' + rid if rid else ''}"
+    )
+
+
+def main():
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("command", nargs="?")
+    p.add_argument("arg", nargs="?")
+    p.add_argument("-s", dest="serial")
+    p.add_argument("-a", "--all", action="store_true")
+    p.add_argument("-h", "--help", action="store_true")
+    a = p.parse_args()
+
+    if a.help or not a.command or a.command in ("help", "-h", "--help"):
+        print(__doc__)
+        return
+
+    cmd = a.command
+
+    if cmd in ("enable-a11y", "disable-a11y"):
+        on = cmd == "enable-a11y"
+        adb(
+            ["shell", "settings", "put", "secure", "enabled_accessibility_services",
+             A11Y_SERVICE if on else "null"],
+            a.serial,
+        )
+        adb(["shell", "settings", "put", "secure", "accessibility_enabled",
+             "1" if on else "0"], a.serial)
+        print(
+            "accessibility service enabled — web content now appears in the tree"
+            if on
+            else "accessibility service disabled"
+        )
+        return
+
+    if cmd == "key":
+        if not a.arg:
+            sys.exit("ui-android: key needs a name, e.g. TAB, ENTER, BACK")
+        k = a.arg if a.arg.startswith("KEYCODE_") else "KEYCODE_" + a.arg.upper()
+        adb(["shell", "input", "keyevent", k], a.serial)
+        print(f"key {k}")
+        return
+
+    if cmd == "type":
+        if a.arg is None:
+            sys.exit("ui-android: type needs text")
+        # `input text` treats a bare space as an argument separator.
+        adb(["shell", "input", "text", a.arg.replace(" ", "%s")], a.serial)
+        print(f"typed {a.arg!r}")
+        return
+
+    if cmd == "shot":
+        if not a.arg:
+            sys.exit("ui-android: shot needs an output path, e.g. screen.png")
+        png = adb_binary(["exec-out", "screencap", "-p"], a.serial)
+        with open(a.arg, "wb") as fh:
+            fh.write(png)
+        print(f"wrote {a.arg} ({len(png)} bytes)")
+        return
+
+    nodes = dump(a.serial)
+
+    if cmd == "tree":
+        sel = nodes if a.all else [n for n in nodes if "_centre" in n and interactable(n)]
+        for n in sel:
+            print(show(n))
+        print(f"\n{len(sel)} of {len(nodes)} nodes", file=sys.stderr)
+        return
+
+    if cmd == "focus":
+        f = [n for n in nodes if n.get("focused") == "true"]
+        print(show(f[-1]) if f else "  (nothing focused)")
+        return
+
+    if cmd in ("find", "tap"):
+        if not a.arg:
+            sys.exit(f"ui-android: {cmd} needs a QUERY")
+        hits = find(nodes, a.arg)
+        if not hits:
+            listing = "\n".join(
+                show(n) for n in nodes if "_centre" in n and interactable(n)
+            )
+            sys.exit(
+                f"ui-android: no node matching {a.arg!r}\n"
+                f"--- interactable nodes on screen ---\n{listing}"
+            )
+        if cmd == "find":
+            for n in hits:
+                print(show(n))
+            return
+        n = hits[0]
+        if n.get("enabled") == "false":
+            sys.exit(f"ui-android: {label(n)!r} is disabled")
+        x, y = n["_centre"]
+        adb(["shell", "input", "tap", str(x), str(y)], a.serial)
+        print(f"tapped {label(n)!r} at ({x},{y})")
+        return
+
+    sys.exit(f"ui-android: unknown command {cmd!r} — run with --help")
+
+
+if __name__ == "__main__":
+    main()
