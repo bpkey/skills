@@ -88,6 +88,7 @@ Load only what the current task needs. Each file is self-contained.
 |---|---|---|
 | Auth, tokens, scopes, secrets | `references/tokens-and-scopes.md` | Choosing a token type, picking scopes, handling install/OAuth, storing credentials |
 | UI and surfaces | `references/ui.md` | Designing messages, modals, App Home, forms, canvases; anything a human looks at |
+| Block Kit type inventory | `references/block-kit-reference.md` | Assembling an actual payload and needing exact block and element `type` names |
 | Events, delivery, interactivity | `references/events-and-delivery.md` | Receiving anything from Slack — events, commands, button clicks, view submissions |
 | Deployment and local dev | `references/deployment.md` | Deciding hosting, running locally, tunnels, CI, process model, secret storage |
 | App configuration and distribution | `references/configuration.md` | Manifests, app settings, install policy, one workspace versus many, Enterprise Grid |

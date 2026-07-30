@@ -42,29 +42,21 @@ than by trial and error in code — it renders live and emits the JSON.
 
 ## Blocks and elements
 
-**Blocks** are the structural units: a section of text (optionally with an accessory element on the
-right), a header, a divider, an image, a context line of small muted text, an actions row holding
-several interactive elements, an input row that collects one value, a rich-text block, a video block,
-and a file block.
+**Blocks** are the structural units — a section of text with an optional accessory, a header, a
+divider, a context line, an actions row, a labelled input, an image, a rich-text tree, and others.
+**Elements** are the controls that live inside blocks — buttons, select menus, checkboxes, radio
+buttons, pickers, and text inputs.
 
-**Elements** are the interactive controls that live inside blocks:
+**For the actual inventory of block and element types, with the exact `type` strings and the URL
+pattern for looking up any one of them, read `block-kit-reference.md`.** Do that rather than working
+from memory: the set has grown substantially, several newer blocks exist only for agent or Salesforce
+surfaces, and availability differs per surface in ways the index pages do not state.
 
-- Buttons, including a button that starts a workflow
-- Select menus and multi-select menus, in variants that draw options from your own list, from a remote
-  data source, or from Slack's own directories of users, channels, or conversations
-- Radio buttons, checkboxes, and an overflow menu
-- Date, time, and combined date-time pickers
-- Text inputs, including single-line, multi-line, and variants constrained to a number, an email
-  address, or a URL
-- A rich-text input, which preserves formatting in what the user types
-- A file input, for collecting an upload
-
-Element and block availability differs by surface — some inputs only work in modals and App Home, not
-in messages. The reference pages for blocks and elements state the compatible surfaces per type;
-check there rather than assuming, because this is a common source of an opaque `invalid_blocks` error.
-
-When a payload is rejected, the error rarely says which block is wrong. Bisect by removing blocks, or
-paste the payload into Block Kit Builder, which validates precisely.
+Two things to internalise here. Element and block availability is **surface-specific** — inputs are
+chiefly a modal and Home tab construct, and an element that renders in a modal is not necessarily
+valid in a message. And nesting is **one level deep**: a section takes one accessory, an actions block
+takes a row, an input block takes exactly one element. If a layout needs more than that, it cannot be
+expressed in Block Kit and the information needs restructuring instead.
 
 ## Modals
 
