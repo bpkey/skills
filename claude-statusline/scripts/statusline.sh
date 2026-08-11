@@ -2,7 +2,14 @@
 # Claude Code status line renderer.
 #
 # Layout:
-#   <context%> <$cost> <model> <effort>  <cwd> [<branch>] [<worktree>]  <@domain> <5h%> <7d%>
+#   <context%> <$cost> <model> <effort>  <cwd> ⑂ <branch> ⧉ <worktree>  <@domain> <5h%> <7d%>
+#
+# The branch and worktree are prefixed with a glyph rather than wrapped in
+# brackets, so the two can't be mistaken for each other: ⑂ (U+2442 OCR FORK)
+# for the branch, ⧉ (U+29C9 TWO JOINED SQUARES — "a second checkout") for the
+# worktree. Most monospace fonts (SF Mono, Menlo) lack one or both, but system
+# symbol fonts carry them — Apple Symbols on macOS — so font fallback renders
+# them. The cwd stays unprefixed; a path is already self-evident.
 #
 # Claude Code pipes the status-line JSON to this script on stdin on every
 # turn; see https://docs.claude.com/en/docs/claude-code/statusline for the
@@ -122,8 +129,8 @@ append "$pct_segment" "  "
 append "$model" " "
 append "$effort" " "
 append "$cwd" "  "
-[ -n "$branch" ]   && append "[$branch]" " "
-[ -n "$worktree" ] && append "[$worktree]" " "
+[ -n "$branch" ]   && append "⑂ $branch" " "
+[ -n "$worktree" ] && append "⧉ $worktree" " "
 append "$account" "  "
 append "$usage" " "
 
