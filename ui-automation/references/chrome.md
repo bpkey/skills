@@ -123,20 +123,81 @@ c=json.load(open(p))['profile']['info_cache']
 "
 ```
 
-Then open URLs in the profile that actually has access:
+Then open the URL in the profile that has access:
 
 ```bash
-open -a "Google Chrome" --args --profile-directory="<Profile Dir>" "https://example.com/page"
+open -na "Google Chrome" --args --profile-directory="<Profile Dir>" "https://example.com/page"
 ```
 
 Several URLs in one invocation open as several tabs.
 
+### `--profile-directory` only works at cold start
+
+**Chrome honors `--profile-directory` when it is launching, and ignores it when it is already
+running.** A second Chrome process finds the running instance, hands over its command line, and
+exits; the running instance then opens the URL in **whatever window was most recently active**,
+in whatever profile that window belongs to. The flag is silently dropped.
+
+This is a property of Chrome's single-instance model, not of any one command spelling. All of
+these behave identically once Chrome is up — none of them targets a profile:
+
+```bash
+open -a "Google Chrome" --args --profile-directory="X" "<url>"          # flag ignored
+open -na "Google Chrome" --args --profile-directory="X" "<url>"         # flag ignored
+open -na "Google Chrome" --args --profile-directory="X" --new-window "<url>"  # flag ignored
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --profile-directory="X" "<url>"                                       # flag ignored
+```
+
+The failure is invisible, and worse, it is *intermittently correct*: when the intended profile
+happens to own the active window, the URL lands right and the command looks like it worked.
+Reaching for a different spelling after a miss is chasing a coincidence.
+
+So do not assume placement — establish it:
+
+- **Cold start is the one reliable path.** If the target profile has no window yet, launching it
+  with the flag genuinely opens that profile. Quitting Chrome entirely first (`osascript -e 'tell
+  application "Google Chrome" to quit'`, then wait for the process to exit) makes the next launch
+  a cold start, at the cost of disrupting every other window.
+- **With Chrome already running, verify where the tab landed** rather than trusting the flag. For
+  a private URL the tell is the title: a "not found" page means it opened in a profile without
+  access.
+- **A router extension is the robust answer** if this matters routinely. Only code running inside
+  Chrome can move a URL between profiles reliably; a command line cannot.
+
+### Raise the window, or the user sees nothing
+
+Opening a tab does not bring Chrome forward. The page loads in a window the user may not be
+looking at, and to them the command did nothing — which reads as a failure and invites
+re-running it, piling up duplicate tabs. After opening a URL the user asked to see, activate
+Chrome and select the tab:
+
+```bash
+osascript <<'EOF'
+tell application "Google Chrome"
+  activate
+  repeat with w in windows
+    set i to 0
+    repeat with t in tabs of w
+      set i to i + 1
+      if URL of t contains "URL_FRAGMENT" then
+        set active tab index of w to i
+        set index of w to 1
+        return "raised"
+      end if
+    end repeat
+  end repeat
+  return "not found"
+end tell
+EOF
+```
+
 **The extension is paired to one profile at a time**, which is often the default one. If the
 extension is bound to a profile without access, an MCP-driven `navigate` returns that same
 misleading "not found" — the call succeeds and the page is empty. That's a profile mismatch,
-not a broken link. The `open -a` command above targets a profile directly and needs no
-extension, but note the trade-off: only the extension-controlled profile can be *read* by the
-browser tools, so a page opened that way is for the user to look at, not for you to scrape.
+not a broken link. The `open` command above needs no extension, but note the trade-off: only the
+extension-controlled profile can be *read* by the browser tools, so a page opened that way is for
+the user to look at, not for you to scrape.
 
 ## The DevTools Protocol directly
 
