@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Claude Code status line renderer.
 #
-# Layout:  <context%> <$cost>  <cwd> [<branch>] [<worktree>]  <model>  <effort>
+# Layout:
+#   <context%> <$cost> <model> <effort>  <cwd> [<branch>] [<worktree>]  <@domain> <5h%> <7d%>
 #
 # Claude Code pipes the status-line JSON to this script on stdin on every
 # turn; see https://docs.claude.com/en/docs/claude-code/statusline for the
@@ -21,27 +22,61 @@ fi
 # Pull every field in one jq pass, joined by US (0x1f). A non-whitespace
 # separator matters: with a whitespace IFS, `read` collapses consecutive
 # empty fields, so a missing effort+worktree would shift the percentage into
-# the wrong slot. The percentage is floored to a whole number in jq (and
-# emptied when null, early in the session) so it arrives as a clean integer.
-IFS=$'\x1f' read -r cwd model effort worktree pct cost < <(printf '%s' "$input" | jq -r '
+# the wrong slot. Percentages are floored to whole numbers in jq (and emptied
+# when null, early in the session) so they arrive as clean integers.
+IFS=$'\x1f' read -r cwd model effort worktree pct cost five_h seven_d < <(printf '%s' "$input" | jq -r '
+  def whole: if type == "number" then (floor | tostring) else "" end;
   [ (.workspace.current_dir // .cwd // ""),
     (.model.display_name // ""),
     (.effort.level // ""),
     (.workspace.git_worktree // .worktree.name // ""),
-    (.context_window.used_percentage | if type == "number" then (floor | tostring) else "" end),
-    (.cost.total_cost_usd | if type == "number" then (. * 100 | round / 100 | tostring) else "" end)
-  ] | join("")')
+    (.context_window.used_percentage | whole),
+    (.cost.total_cost_usd | if type == "number" then (. * 100 | round / 100 | tostring) else "" end),
+    (.rate_limits.five_hour.used_percentage | whole),
+    (.rate_limits.seven_day.used_percentage | whole)
+  ] | join("\u001f")')
 
-# Collapse $HOME → ~ for a shorter, readable path.
-[ -n "$cwd" ] && cwd="${cwd/#$HOME/~}"
+# The full path eats most of the line's width, so show only the last two
+# components — enough to identify the project (and which worktree of it)
+# without pushing everything else off the edge. $HOME renders as ~.
+short_path() {
+  local p="$1" base parent
+  [ -z "$p" ] && return
+  [ "$p" = "$HOME" ] && { printf '~'; return; }
+  base="${p##*/}"
+  [ -z "$base" ] && { printf '%s' "$p"; return; }   # p is "/"
+  parent="${p%/*}"
+  parent="${parent##*/}"
+  [ -z "$parent" ] && { printf '/%s' "$base"; return; }  # p is a top-level dir
+  printf '%s/%s' "$parent" "$base"
+}
 
 # The branch name isn't in the status-line JSON, so read it from git in the
-# session's own directory (not wherever this script happens to run).
+# session's own directory (not wherever this script happens to run) — using
+# the full path, before it gets shortened for display.
 branch=""
-if [ -n "$cwd" ]; then
-  dir="${cwd/#\~/$HOME}"
-  branch=$(git -C "$dir" branch --show-current 2>/dev/null)
-fi
+[ -n "$cwd" ] && branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+cwd=$(short_path "$cwd")
+
+# `Opus 5 (1M context)` is most of a status line by itself. Keep the family
+# name and the context-window marker, drop the rest: `opus|1M`.
+short_model() {
+  local name="$1" family suffix
+  [ -z "$name" ] && return
+  case "$name" in
+    *[Oo]pus*)   family=opus ;;
+    *[Ss]onnet*) family=sonnet ;;
+    *[Hh]aiku*)  family=haiku ;;
+    *[Ff]able*)  family=fable ;;
+    *) family=$(printf '%s' "${name%% *}" | tr '[:upper:]' '[:lower:]') ;;
+  esac
+  case "$name" in
+    *1M*) suffix="|1M" ;;
+    *)    suffix="" ;;
+  esac
+  printf '%s%s' "$family" "$suffix"
+}
+model=$(short_model "$model")
 
 # Color the context% to flag when it climbs: 10–14% orange, 15%+ red, under
 # 10% no color. ANSI escapes (orange via 256-color 208, red via 196) with a
@@ -57,10 +92,25 @@ if [ -n "$pct" ]; then
   fi
 fi
 
-# Assemble left to right with context% first, dropping any segment we couldn't
-# resolve. `append` adds its separator only once the line is non-empty, so the
-# line never starts or ends with stray spaces no matter which segments are
-# present (e.g. before the first response sets context%, cwd leads instead).
+# Which Anthropic account this session is logged into. It isn't in the
+# status-line JSON, so read it from the CLI's own config; only the @domain is
+# shown, which is what distinguishes one account from another at a glance.
+account=""
+if [ -r "$HOME/.claude.json" ]; then
+  email=$(jq -r '.oauthAccount.emailAddress // empty' "$HOME/.claude.json" 2>/dev/null)
+  [ -n "$email" ] && account="@${email#*@}"
+fi
+
+# Account usage against the two plan limits, labelled so they can't be
+# confused with the context percentage at the far left.
+usage=""
+[ -n "$five_h" ]  && usage="5h $five_h%"
+[ -n "$seven_d" ] && usage="${usage:+$usage }7d $seven_d%"
+
+# Assemble left to right, dropping any segment we couldn't resolve. `append`
+# adds its separator only once the line is non-empty, so the line never starts
+# or ends with stray spaces no matter which segments are present (e.g. before
+# the first response sets context%, cost leads instead).
 out=""
 append() { # $1 = text, $2 = separator to use when the line already has content
   [ -z "$1" ] && return
@@ -69,10 +119,12 @@ append() { # $1 = text, $2 = separator to use when the line already has content
 
 append "$pct_segment" "  "
 [ -n "$cost" ] && append "\$$cost" " "
+append "$model" " "
+append "$effort" " "
 append "$cwd" "  "
 [ -n "$branch" ]   && append "[$branch]" " "
 [ -n "$worktree" ] && append "[$worktree]" " "
-append "$model" "  "
-append "$effort" "  "
+append "$account" "  "
+append "$usage" " "
 
 printf '%s' "$out"

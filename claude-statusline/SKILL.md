@@ -1,6 +1,6 @@
 ---
 name: claude-statusline
-description: Set up Claude Code's status line to show, left to right, the percentage of the context window used, the conversation cost in USD, the current working directory, the git branch in [brackets], the git worktree in [brackets], the model name, and the reasoning effort level. Use whenever the user invokes /claude-statusline, or asks to "set up my status line", "configure the statusline", "show branch and context in my status bar", "add the model and context percent to my status line", "give me a status line with cwd, branch, model, and context %", or otherwise wants this specific status line layout in Claude Code. Claude Code only — it writes ~/.claude/settings.json's .statusLine key, which no other AI tool reads.
+description: Set up Claude Code's status line to show, left to right, the percentage of the context window used, the conversation cost in USD, a short model name, the reasoning effort level, the last two components of the working directory, the git branch in [brackets], the git worktree in [brackets], the signed-in Anthropic account's @domain, and account usage against the 5-hour and 7-day plan limits. Use whenever the user invokes /claude-statusline, or asks to "set up my status line", "configure the statusline", "show branch and context in my status bar", "add the model and context percent to my status line", "give me a status line with cwd, branch, model, and context %", or otherwise wants this specific status line layout in Claude Code. Claude Code only — it writes ~/.claude/settings.json's .statusLine key, which no other AI tool reads.
 ---
 
 # /claude-statusline
@@ -8,13 +8,13 @@ description: Set up Claude Code's status line to show, left to right, the percen
 Configures the Claude Code status line to render this layout on every turn:
 
 ```
-<context%> <$cost>  <cwd> [<branch>] [<worktree>]  <model>  <effort>
+<context%> <$cost> <model> <effort>  <cwd> [<branch>] [<worktree>]  <@domain> <5h%> <7d%>
 ```
 
 For example:
 
 ```
-37% $1.23  ~/repo/skills [main] [feat-x]  Opus 4.7  high
+12% $1.23 opus|1M high  repo/skills [main] [feat-x]  @example.com 5h 12% 7d 40%
 ```
 
 This is the same end state the built-in `/statusline` command produces, but pinned to this exact layout and installed deterministically — no LLM regenerates the script each time, so the result is identical on every machine.
@@ -25,11 +25,13 @@ This is the same end state the built-in `/statusline` command produces, but pinn
 |---|---|---|
 | context% | `.context_window.used_percentage` | omitted until the first model response sets it; **orange at 10–14%, red at 15%+**, plain below 10% |
 | $cost | `.cost.total_cost_usd` | conversation cost in USD, rounded to cents; omitted when not reported |
-| cwd | `.workspace.current_dir` (falls back to `.cwd`) | `$HOME` shown as `~` |
-| `[branch]` | `git branch --show-current` in the session's cwd | branch isn't in the JSON, so it's read from git |
-| `[worktree]` | `.workspace.git_worktree` (falls back to `.worktree.name`) | only shown in a linked git worktree |
-| model | `.model.display_name` | e.g. `Opus 4.7` |
+| model | `.model.display_name` | shortened to the family name plus a `\|1M` marker for long-context variants — `Opus 5 (1M context)` renders as `opus\|1M` |
 | effort | `.effort.level` | only shown on models with a reasoning-effort knob |
+| cwd | `.workspace.current_dir` (falls back to `.cwd`) | only the **last two path components**, so a deep path can't crowd out everything else; `$HOME` shows as `~` |
+| `[branch]` | `git branch --show-current` in the session's cwd | branch isn't in the JSON, so it's read from git — using the full path, before it's shortened |
+| `[worktree]` | `.workspace.git_worktree` (falls back to `.worktree.name`) | only shown in a linked git worktree |
+| @domain | `.oauthAccount.emailAddress` in `~/.claude.json` | the signed-in Anthropic account's domain, so two accounts are told apart at a glance; not in the status-line JSON, so it's read from the CLI's own config |
+| 5h% / 7d% | `.rate_limits.five_hour` / `.seven_day` `.used_percentage` | account usage against the rolling 5-hour and 7-day plan limits; each drops out when the API doesn't report it |
 
 Any segment whose data isn't available is dropped, so the line stays clean outside a repo, before the first response, or on a model with no effort setting.
 
