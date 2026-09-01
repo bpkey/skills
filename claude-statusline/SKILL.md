@@ -1,6 +1,6 @@
 ---
 name: claude-statusline
-description: Set up Claude Code's status line to show, left to right, the percentage of the context window used, the conversation cost in USD, a short model name, the reasoning effort level, the last two components of the working directory, the git branch behind a fork glyph, the git worktree behind a joined-squares glyph, the signed-in Anthropic account's @domain, and account usage against the 5-hour and 7-day plan limits. Use whenever the user invokes /claude-statusline, or asks to "set up my status line", "configure the statusline", "show branch and context in my status bar", "add the model and context percent to my status line", "give me a status line with cwd, branch, model, and context %", or otherwise wants this specific status line layout in Claude Code. Claude Code only — it writes ~/.claude/settings.json's .statusLine key, which no other AI tool reads.
+description: Set up Claude Code's status line to show, left to right, the percentage of the context window used, the conversation cost in USD, a compact account+usage token (the signed-in Anthropic account's @name joined with the 5-hour and 7-day plan-usage percentages, e.g. @example_12%_40%), a short model name, the reasoning effort level, the last two components of the working directory, the git branch behind a fork glyph, and the git worktree behind a joined-squares glyph. Use whenever the user invokes /claude-statusline, or asks to "set up my status line", "configure the statusline", "show branch and context in my status bar", "add the model and context percent to my status line", "give me a status line with cwd, branch, model, and context %", or otherwise wants this specific status line layout in Claude Code. Claude Code only — it writes ~/.claude/settings.json's .statusLine key, which no other AI tool reads.
 ---
 
 # /claude-statusline
@@ -8,13 +8,13 @@ description: Set up Claude Code's status line to show, left to right, the percen
 Configures the Claude Code status line to render this layout on every turn:
 
 ```
-<context%> <$cost> <model> <effort>  <cwd> ⑂ <branch> ⧉ <worktree>  <@domain> <5h%> <7d%>
+<context%> <$cost> <@account_5h%_7d%> <model> <effort>  <cwd> ⑂ <branch> ⧉ <worktree>
 ```
 
 For example:
 
 ```
-12% $1.23 opus|1M high  repo/skills ⑂ main ⧉ feat-x  @example.com 5h 12% 7d 40%
+12% $1.23 @example_12%_40% opus|1M high  repo/skills ⑂ main ⧉ feat-x
 ```
 
 This is the same end state the built-in `/statusline` command produces, but pinned to this exact layout and installed deterministically — no LLM regenerates the script each time, so the result is identical on every machine.
@@ -23,8 +23,9 @@ This is the same end state the built-in `/statusline` command produces, but pinn
 
 | Segment | Source | Notes |
 |---|---|---|
-| context% | `.context_window.used_percentage` | omitted until the first model response sets it; **orange at 10–14%, red at 15%+**, plain below 10% |
+| context% | `.context_window.used_percentage` | omitted until the first model response sets it; **orange at 25–34%, red at 35%+**, plain below 25% |
 | $cost | `.cost.total_cost_usd` | conversation cost in USD, rounded to cents; omitted when not reported |
+| @account_5h%_7d% | `.oauthAccount.emailAddress` in `~/.claude.json` + `.rate_limits.five_hour` / `.seven_day` `.used_percentage` | one underscore-joined token: the account domain's first label (`@example`, not `@example.com`) so two accounts are told apart at a glance, then usage against the rolling 5-hour and 7-day plan limits; each part drops out when unavailable |
 | model | `.model.display_name` | shortened to the family name plus a `\|1M` marker for long-context variants — `Opus 5 (1M context)` renders as `opus\|1M` |
 | effort | `.effort.level` | only shown on models with a reasoning-effort knob |
 | cwd | `.workspace.current_dir` (falls back to `.cwd`) | only the **last two path components**, so a deep path can't crowd out everything else; `$HOME` shows as `~` |

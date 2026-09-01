@@ -2,7 +2,7 @@
 # Claude Code status line renderer.
 #
 # Layout:
-#   <context%> <$cost> <model> <effort>  <cwd> ⑂ <branch> ⧉ <worktree>  <@domain> <5h%> <7d%>
+#   <context%> <$cost> <@account_5h%_7d%> <model> <effort>  <cwd> ⑂ <branch> ⧉ <worktree>
 #
 # The branch and worktree are prefixed with a glyph rather than wrapped in
 # brackets, so the two can't be mistaken for each other: ⑂ (U+2442 OCR FORK)
@@ -85,14 +85,14 @@ short_model() {
 }
 model=$(short_model "$model")
 
-# Color the context% to flag when it climbs: 10–14% orange, 15%+ red, under
-# 10% no color. ANSI escapes (orange via 256-color 208, red via 196) with a
+# Color the context% to flag when it climbs: 25–34% orange, 35%+ red, under
+# 25% no color. ANSI escapes (orange via 256-color 208, red via 196) with a
 # reset after; Claude Code renders these in the status line.
 pct_segment=""
 if [ -n "$pct" ]; then
-  if [ "$pct" -ge 15 ]; then
+  if [ "$pct" -ge 35 ]; then
     pct_segment=$'\033[38;5;196m'"$pct%"$'\033[0m'
-  elif [ "$pct" -ge 10 ]; then
+  elif [ "$pct" -ge 25 ]; then
     pct_segment=$'\033[38;5;208m'"$pct%"$'\033[0m'
   else
     pct_segment="$pct%"
@@ -100,19 +100,23 @@ if [ -n "$pct" ]; then
 fi
 
 # Which Anthropic account this session is logged into. It isn't in the
-# status-line JSON, so read it from the CLI's own config; only the @domain is
-# shown, which is what distinguishes one account from another at a glance.
+# status-line JSON, so read it from the CLI's own config; only the domain's
+# first label is shown (@blueprintkey, not @blueprintkey.com), which is what
+# distinguishes one account from another at a glance.
 account=""
 if [ -r "$HOME/.claude.json" ]; then
   email=$(jq -r '.oauthAccount.emailAddress // empty' "$HOME/.claude.json" 2>/dev/null)
-  [ -n "$email" ] && account="@${email#*@}"
+  if [ -n "$email" ]; then
+    domain="${email#*@}"
+    account="@${domain%%.*}"
+  fi
 fi
 
-# Account usage against the two plan limits, labelled so they can't be
-# confused with the context percentage at the far left.
-usage=""
-[ -n "$five_h" ]  && usage="5h $five_h%"
-[ -n "$seven_d" ] && usage="${usage:+$usage }7d $seven_d%"
+# Account + usage against the two plan limits, joined into one compact
+# underscore-separated token: @blueprintkey_30%_36% (5h then 7d).
+acct_usage="$account"
+[ -n "$five_h" ]  && acct_usage="${acct_usage}_$five_h%"
+[ -n "$seven_d" ] && acct_usage="${acct_usage}_$seven_d%"
 
 # Assemble left to right, dropping any segment we couldn't resolve. `append`
 # adds its separator only once the line is non-empty, so the line never starts
@@ -126,12 +130,11 @@ append() { # $1 = text, $2 = separator to use when the line already has content
 
 append "$pct_segment" "  "
 [ -n "$cost" ] && append "\$$cost" " "
+append "$acct_usage" " "
 append "$model" " "
 append "$effort" " "
 append "$cwd" "  "
 [ -n "$branch" ]   && append "⑂ $branch" " "
 [ -n "$worktree" ] && append "⧉ $worktree" " "
-append "$account" "  "
-append "$usage" " "
 
 printf '%s' "$out"
