@@ -43,27 +43,37 @@ IFS=$'\x1f' read -r cwd model effort worktree pct cost five_h seven_d < <(printf
     (.rate_limits.seven_day.used_percentage | whole)
   ] | join("\u001f")')
 
-# The full path eats most of the line's width, so show only the last two
-# components — enough to identify the project (and which worktree of it)
-# without pushing everything else off the edge. $HOME renders as ~.
-short_path() {
-  local p="$1" base parent
+# Where the session is, said once. Three names for one place — the folder,
+# the branch, and the worktree — read as three different things and are often
+# near-copies of each other, so only the one that identifies the work is
+# shown, each behind a letter that says what it is:
+#
+#   f:<folder>              outside a repo — the last folder of the path
+#   b:<branch>              in a repo
+#   b:<branch> w:<worktree> in a linked worktree of one
+#
+# The branch isn't in the status-line JSON, so it's read from git in the
+# session's own directory rather than wherever this script happens to run. A
+# detached HEAD has no branch to name, so it falls back to the folder.
+folder() {
+  local p="$1"
   [ -z "$p" ] && return
   [ "$p" = "$HOME" ] && { printf '~'; return; }
-  base="${p##*/}"
-  [ -z "$base" ] && { printf '%s' "$p"; return; }   # p is "/"
-  parent="${p%/*}"
-  parent="${parent##*/}"
-  [ -z "$parent" ] && { printf '/%s' "$base"; return; }  # p is a top-level dir
-  printf '%s/%s' "$parent" "$base"
+  [ "${p##*/}" = "" ] && { printf '%s' "$p"; return; }   # p is "/"
+  printf '%s' "${p##*/}"
 }
 
-# The branch name isn't in the status-line JSON, so read it from git in the
-# session's own directory (not wherever this script happens to run) — using
-# the full path, before it gets shortened for display.
 branch=""
 [ -n "$cwd" ] && branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
-cwd=$(short_path "$cwd")
+
+place=""
+if [ -n "$branch" ]; then
+  place="b:$branch"
+  [ -n "$worktree" ] && place="$place w:$worktree"
+else
+  folder=$(folder "$cwd")
+  [ -n "$folder" ] && place="f:$folder"
+fi
 
 # `Opus 5 (1M context)` is most of a status line by itself. Keep the family
 # name and the context-window marker, drop the rest: `opus|1M`.
@@ -234,8 +244,6 @@ append "$pct_segment" "  "
 append "$acct_usage" " "
 append "$model" " "
 append "$effort" " "
-append "$cwd" "  "
-[ -n "$branch" ]   && append "⑂ $branch" " "
-[ -n "$worktree" ] && append "⧉ $worktree" " "
+append "$place" "  "
 
 printf '%s' "$out"
