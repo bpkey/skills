@@ -67,22 +67,27 @@ cwd=$(short_path "$cwd")
 
 # `Opus 5 (1M context)` is most of a status line by itself. Keep the family
 # name and the context-window marker, drop the rest: `opus|1M`.
-short_model() {
-  local name="$1" family suffix
+model_family() {
+  local name="$1"
   [ -z "$name" ] && return
   case "$name" in
-    *[Oo]pus*)   family=opus ;;
-    *[Ss]onnet*) family=sonnet ;;
-    *[Hh]aiku*)  family=haiku ;;
-    *[Ff]able*)  family=fable ;;
-    *) family=$(printf '%s' "${name%% *}" | tr '[:upper:]' '[:lower:]') ;;
+    *[Oo]pus*)   printf 'opus' ;;
+    *[Ss]onnet*) printf 'sonnet' ;;
+    *[Hh]aiku*)  printf 'haiku' ;;
+    *[Ff]able*)  printf 'fable' ;;
+    *) printf '%s' "${name%% *}" | tr '[:upper:]' '[:lower:]' ;;
   esac
+}
+short_model() {
+  local name="$1" suffix
+  [ -z "$name" ] && return
   case "$name" in
     *1M*) suffix="|1M" ;;
     *)    suffix="" ;;
   esac
-  printf '%s%s' "$family" "$suffix"
+  printf '%s%s' "$(model_family "$name")" "$suffix"
 }
+family=$(model_family "$model")
 model=$(short_model "$model")
 
 # Color the context% to flag when it climbs: 25–34% orange, 35%+ red, under
@@ -109,6 +114,102 @@ if [ -r "$HOME/.claude.json" ]; then
   if [ -n "$email" ]; then
     domain="${email#*@}"
     account="@${domain%%.*}"
+  fi
+fi
+
+# The weekly window of the model this session is on — what `/usage` draws as
+# "Current week (Fable)". The status-line JSON carries only the account-wide
+# five-hour and seven-day windows: Claude Code keeps the per-model buckets on
+# an object it doesn't pipe here (its internal schema calls them
+# `rate_limits.model_scoped`). So fetch them ourselves from the same endpoint
+# `/usage` reads, and cache them.
+#
+# The render never waits on the network. A cache younger than the TTL is used
+# as it stands; an older one is still used, and a refresh runs detached for
+# the next turn to pick up. No cache means no segment — never a stall, never
+# an error on the line.
+usage_cache="$HOME/.claude/cache/oauth-usage.json"
+usage_ttl=60
+
+# A directory is the lock: `mkdir` is atomic, so of the several sessions
+# rendering at once exactly one refreshes. A lock older than two minutes
+# outlived its refresh and is cleared.
+refresh_usage() {
+  local lock="$usage_cache.lock" tmp
+  mkdir -p "${usage_cache%/*}" 2>/dev/null
+  if [ -d "$lock" ]; then
+    [ -z "$(find "$lock" -maxdepth 0 -mmin +2 2>/dev/null)" ] && return
+    rmdir "$lock" 2>/dev/null
+  fi
+  mkdir "$lock" 2>/dev/null || return
+  (
+    # The OAuth token stays out of argv and out of every process listing:
+    # curl reads the header from a config on stdin, and nothing echoes it.
+    # macOS keeps it in the login Keychain, Linux in a credentials file.
+    tok=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null |
+      jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
+    if [ -z "$tok" ] && [ -r "$HOME/.claude/.credentials.json" ]; then
+      tok=$(jq -r '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)
+    fi
+    if [ -n "$tok" ]; then
+      tmp="$usage_cache.$$"
+      if printf 'url = "https://api.anthropic.com/api/oauth/usage"\nheader = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$tok" |
+        curl -s -m 10 -K - -o "$tmp" && jq -e '.limits' "$tmp" >/dev/null 2>&1; then
+        mv -f "$tmp" "$usage_cache"
+      else
+        rm -f "$tmp"
+      fi
+    fi
+    rmdir "$lock" 2>/dev/null
+  ) >/dev/null 2>&1 &
+  disown 2>/dev/null
+}
+
+age=$(stat -f %m "$usage_cache" 2>/dev/null)
+if [ -z "$age" ] || [ $(($(date +%s) - age)) -ge "$usage_ttl" ]; then
+  refresh_usage
+fi
+
+# The weekly bucket whose model matches this session's, if the account has
+# one — how much of it is spent, and when it resets. Matching on the server's
+# own display name keeps this generic: a bucket the server later emits for
+# another family works with no change here. The reset time is an ISO
+# timestamp with a fraction and a numeric offset, which `fromdateiso8601`
+# refuses, so the fraction and the (always UTC) offset are trimmed first.
+model_pct=""
+model_reset=""
+if [ -n "$family" ] && [ -r "$usage_cache" ]; then
+  IFS=' ' read -r model_pct model_reset < <(jq -r --arg fam "$family" '
+    def epoch: try (sub("\\.[0-9]+"; "") | sub("(\\+00:00|Z)$"; "") + "Z" | fromdateiso8601) catch empty;
+    [ .limits[]?
+      | select(.kind == "weekly_scoped")
+      | select((.scope.model.display_name // "") | ascii_downcase | startswith($fam)) ][0]
+    | select(. != null)
+    | "\(.percent | floor) \((.resets_at // "" | epoch) // "")"' "$usage_cache" 2>/dev/null)
+fi
+
+# Hours until that window resets, rounded up so a window still open never
+# reads as 0. Under an hour says so rather than claiming a whole one.
+model_left=""
+if [ -n "$model_reset" ]; then
+  secs=$((model_reset - $(date +%s)))
+  if [ "$secs" -gt 3600 ]; then
+    model_left="..$(((secs + 3599) / 3600))hr"
+  elif [ "$secs" -gt 0 ]; then
+    model_left="..<1hr"
+  fi
+fi
+
+# Shown against the model name — `fable(78%..19hr)` — because it is that
+# model's limit and moving off the model moves off the limit. Orange from
+# 75%, red from 90%: the weekly window is the one that ends a day's work.
+if [ -n "$model_pct" ] && [ -n "$model" ]; then
+  if [ "$model_pct" -ge 90 ]; then
+    model="$model"$'\033[38;5;196m'"($model_pct%$model_left)"$'\033[0m'
+  elif [ "$model_pct" -ge 75 ]; then
+    model="$model"$'\033[38;5;208m'"($model_pct%$model_left)"$'\033[0m'
+  else
+    model="$model($model_pct%$model_left)"
   fi
 fi
 
