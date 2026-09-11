@@ -213,6 +213,15 @@ fi
 # Shown against the model name — `fable(78%..19hr)` — because it is that
 # model's limit and moving off the model moves off the limit. Orange from
 # 75%, red from 90%: the weekly window is the one that ends a day's work.
+#
+# Under half spent it says nothing at all. A limit that far off changes no
+# decision, and a number on the line every turn is a number that stops being
+# read — so it appears when it starts to matter.
+model_floor=50
+if [ -n "$model_pct" ] && [ "$model_pct" -lt "$model_floor" ]; then
+  model_pct=""
+fi
+
 if [ -n "$model_pct" ] && [ -n "$model" ]; then
   if [ "$model_pct" -ge 90 ]; then
     model="$model"$'\033[38;5;196m'"($model_pct%$model_left)"$'\033[0m'
