@@ -17,6 +17,7 @@ For example:
 12% $1.23 @example_12%_40% opus|1M high  b:main
 12% $1.23 @example_12%_40% fable(78%..19hr) high  b:feat/x w:wt-x
 12% $1.23 @example_12%_40% haiku  f:Downloads
+12% $1.23 @example_107%_53% EXTRA_USAGE opus|1M  b:main
 ```
 
 The second line is a plan that meters that model on its own weekly window:
@@ -30,7 +31,7 @@ This is the same end state the built-in `/statusline` command produces, but pinn
 |---|---|---|
 | context% | `.context_window.used_percentage` | omitted until the first model response sets it; **orange at 25–34%, red at 35%+**, plain below 25% |
 | $cost | `.cost.total_cost_usd` | conversation cost in USD, rounded to cents; omitted when not reported |
-| @account_5h%_7d% | `.oauthAccount.emailAddress` in `~/.claude.json` + `.rate_limits.five_hour` / `.seven_day` `.used_percentage` | one underscore-joined token: the account domain's first label (`@example`, not `@example.com`) so two accounts are told apart at a glance, then usage against the rolling 5-hour and 7-day plan limits; each part drops out when unavailable |
+| @account_5h%_7d% | `.oauthAccount.emailAddress` in `~/.claude.json` + `.rate_limits.five_hour` / `.seven_day` `.used_percentage` | one underscore-joined token: the account domain's first label (`@example`, not `@example.com`) so two accounts are told apart at a glance, then usage against the rolling 5-hour and 7-day plan limits; each part drops out when unavailable. A window at **90% or more is red**; past **100%** the plan's allowance is spent and the work is billed as extra usage, so **`EXTRA_USAGE`** follows in bold red |
 | model | `.model.display_name` | shortened to the family name plus a `\|1M` marker for long-context variants — `Opus 5 (1M context)` renders as `opus\|1M` |
 | (model week%..hr) | `GET /api/oauth/usage`, the `weekly_scoped` entry whose `scope.model.display_name` matches the model family | the **current model's own weekly limit** — the bar `/usage` draws as "Current week (Fable)" — followed by the hours until it resets: `fable(78%..19hr)`. Shown only from 50% — under half spent the limit changes no decision, so the model name stands alone. Orange from 75%, red from 90%. Absent when the plan has no per-model window for that model. Not in the status-line JSON, so it is fetched and cached; see the caveat below |
 | effort | `.effort.level` | only shown on models with a reasoning-effort knob |

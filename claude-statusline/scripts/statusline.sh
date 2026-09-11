@@ -234,9 +234,22 @@ fi
 
 # Account + usage against the two plan limits, joined into one compact
 # underscore-separated token: @blueprintkey_30%_36% (5h then 7d).
+#
+# A window at 90% or more is red — that is the hour it runs out. Past 100%
+# the plan's allowance is gone and the work is running on extra usage, which
+# is billed, so the token is followed by EXTRA_USAGE in bold red: a colored
+# number alone is easy to read as "nearly out" when the state is already
+# "over, and paying".
+plan_pct() { # $1 = whole-number percentage → the same number, red at 90+
+  if [ "$1" -ge 90 ]; then printf '\033[38;5;196m%s%%\033[0m' "$1"; else printf '%s%%' "$1"; fi
+}
+
 acct_usage="$account"
-[ -n "$five_h" ]  && acct_usage="${acct_usage}_$five_h%"
-[ -n "$seven_d" ] && acct_usage="${acct_usage}_$seven_d%"
+[ -n "$five_h" ]  && acct_usage="${acct_usage}_$(plan_pct "$five_h")"
+[ -n "$seven_d" ] && acct_usage="${acct_usage}_$(plan_pct "$seven_d")"
+if { [ -n "$five_h" ] && [ "$five_h" -ge 100 ]; } || { [ -n "$seven_d" ] && [ "$seven_d" -ge 100 ]; }; then
+  acct_usage="$acct_usage "$'\033[1;38;5;196m'"EXTRA_USAGE"$'\033[0m'
+fi
 
 # Assemble left to right, dropping any segment we couldn't resolve. `append`
 # adds its separator only once the line is non-empty, so the line never starts
